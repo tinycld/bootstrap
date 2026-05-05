@@ -23,10 +23,10 @@ export interface LinkPackageInput {
  *
  * Linking happens against the tinycld **app shell** (sibling repo
  * `tinycld/tinycld`), which owns `packages:link` and bundles `@tinycld/core`
- * at `packages/@tinycld/core/`. The app shell's postinstall creates a
- * `../core` symlink in the workspace parent so this package's tsconfig
- * (`"@tinycld/core/*": ["../core/*"]`) and its Go server's
- * `replace tinycld.org/core => ../../core/server` directive both resolve.
+ * at `packages/@tinycld/core/`. This package's tsconfig
+ * (`"@tinycld/core/*": ["../tinycld/packages/@tinycld/core/*"]`) and its Go
+ * server's `replace tinycld.org/core => ../../tinycld/packages/@tinycld/core/server`
+ * directive both resolve into the bundled core inside the app shell.
  */
 export async function offerLinkPackage({ packageName, targetDir, mode }: LinkPackageInput): Promise<boolean> {
     if (mode === 'skip') return false

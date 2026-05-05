@@ -2,22 +2,21 @@
 
 {{PKG_DESCRIPTION}}
 
-Feature package for the [tinycld](https://github.com/tinycld/tinycld) ecosystem. Lives as a standalone git repo alongside the [`core`](https://github.com/tinycld/core) library and the [`tinycld`](https://github.com/tinycld/tinycld) app shell, plus other sibling packages (`contacts`, `mail`, `calendar`, `drive`, `google-takeout-import`).
+Feature package for the [tinycld](https://github.com/tinycld/tinycld) ecosystem. Lives as a standalone git repo alongside the [`tinycld`](https://github.com/tinycld/tinycld) app shell and other sibling packages (`contacts`, `mail`, `calendar`, `drive`, `google-takeout-import`). The app shell bundles `@tinycld/core` inside it — there is no separate core repo to clone.
 
 ## Development
 
 ```sh
-# Clone core (library), the tinycld app shell, and this package as siblings
+# Clone the app shell and this package as siblings
 cd ~/code/tinycld
-git clone git@github.com:tinycld/core.git
 git clone git@github.com:tinycld/tinycld.git
 git clone git@github.com:tinycld/{{PKG_SLUG}}.git
 
-# Install deps in the app shell (core's deps are picked up via file:../core)
+# Install deps in the app shell
 cd tinycld
 bun install
 
-# Link this package into the tinycld app shell
+# Link this package into the app shell
 bun run packages:link ../{{PKG_SLUG}}
 
 # Run the full stack
@@ -47,10 +46,9 @@ bun run typecheck
 ## CI
 
 `.github/workflows/ci.yml` runs lint, typecheck, and vitest on every push to
-`main` and every PR. It clones `tinycld/core@main` and `tinycld/tinycld@main`
-into sibling directories, installs the app shell's deps (which pull in core
-via `file:../core`), links this package in, and runs the checks — exactly
-what a developer does locally.
+`main` and every PR. It clones `tinycld/tinycld@main` into a sibling
+directory, installs the app shell's deps, links this package in, and runs
+the checks — exactly what a developer does locally.
 
 ## Package anatomy
 
