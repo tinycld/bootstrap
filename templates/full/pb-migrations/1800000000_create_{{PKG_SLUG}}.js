@@ -3,12 +3,28 @@
 // Initial migration for {{PKG_SLUG}}. Creates a single `{{PKG_SNAKE}}_items`
 // collection matching the shape declared in types.ts / collections.ts.
 // Replace or extend this as you build out the package.
+//
+// Auth rules: every TinyCld collection ships with rules. Without them
+// PocketBase falls back to "superusers only" and every insert/select fails
+// with "Only superusers can perform this action." The rules below assume an
+// org-scoped data model — each row has an `owner` relation pointing at a
+// user_org row, and the rule allows access when the calling user owns that
+// user_org. This matches the pattern used by @tinycld/contacts and friends.
+//
+// If your data isn't org-scoped (user-scoped, public, anything else), pick
+// the right rule pattern from the docs:
+//   https://tinycld.org/docs/tasks/auth-rules
 
 migrate(
     app => {
         const collection = new Collection({
             type: 'base',
             name: '{{PKG_SNAKE}}_items',
+            listRule: 'owner.user = @request.auth.id',
+            viewRule: 'owner.user = @request.auth.id',
+            createRule: 'owner.user = @request.auth.id',
+            updateRule: 'owner.user = @request.auth.id',
+            deleteRule: 'owner.user = @request.auth.id',
             fields: [
                 {
                     name: 'name',
@@ -16,6 +32,14 @@ migrate(
                     required: true,
                     min: 1,
                     max: 200,
+                },
+                {
+                    name: 'owner',
+                    type: 'relation',
+                    required: true,
+                    collectionId: 'pbc_user_org_01',
+                    cascadeDelete: true,
+                    maxSelect: 1,
                 },
                 {
                     name: 'created',
@@ -29,6 +53,9 @@ migrate(
                     onCreate: true,
                     onUpdate: true,
                 },
+            ],
+            indexes: [
+                'CREATE INDEX `idx_{{PKG_SNAKE}}_items_owner` ON `{{PKG_SNAKE}}_items` (`owner`)',
             ],
         })
         app.save(collection)

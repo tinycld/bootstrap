@@ -4,6 +4,10 @@ import { Text, View } from 'react-native'
 
 // Dynamic detail route. Wired automatically by core's generator to
 // /a/<orgSlug>/{{PKG_SLUG}}/<id>.
+//
+// To navigate back to the index or to another org-scoped screen, use
+// `useOrgHref()` from `@tinycld/core/lib/org-routes`. See
+// https://tinycld.org/docs/tasks/routing
 
 export default function {{PKG_PASCAL}}Detail() {
     const { id } = useLocalSearchParams<{ id: string }>()

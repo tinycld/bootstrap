@@ -6,6 +6,7 @@
 export interface {{PKG_PASCAL}}Item {
     id: string
     name: string
+    owner: string
     created: string
     updated: string
 }

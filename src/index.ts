@@ -76,6 +76,11 @@ function printNextSteps({ slug, relTarget, linked }: NextStepsInput): void {
     lines.push('  bun run checks')
     lines.push('')
 
+    lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase)`)}`)
+    if (!linked) lines.push('  cd ../tinycld')
+    lines.push('  bun run start')
+    lines.push('')
+
     console.log(lines.join('\n'))
 }
 
