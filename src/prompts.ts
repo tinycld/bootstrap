@@ -1,6 +1,7 @@
-import { resolve } from 'node:path'
+import { relative, resolve } from 'node:path'
 import { cancel, confirm, isCancel, select, text } from '@clack/prompts'
 import type { ParsedArgs } from './args.ts'
+import { detectLayout } from './layout.ts'
 import type { Answers } from './substitute.ts'
 import {
     validateDescription,
@@ -213,23 +214,32 @@ async function resolveBool({ argvValue, skipPrompts, defaultValue, prompt }: Res
 }
 
 async function resolveTarget(fromArgv: string | undefined, slug: string, skipPrompts: boolean): Promise<string> {
-    const defaultTarget = `./${slug}`
+    // Explicit --target always wins. The user knows where they want it.
     if (fromArgv !== undefined) {
         const abs = resolve(fromArgv)
         const err = validateTargetDir(abs)
         if (err) fail(`Invalid target directory: ${err}`)
         return abs
     }
+
+    // No --target: pick a sensible default based on the cwd's existing layout.
+    // If cwd already has a tinycld/ app shell child, attach the new package
+    // alongside it as `<cwd>/<slug>`. Otherwise bootstrap a wrapper workspace
+    // under `<cwd>/tinycld-<slug>/` and place the package inside it.
+    const layout = detectLayout(slug)
+    const defaultAbs = layout.targetDir
+    const defaultDisplay = `./${relative(process.cwd(), defaultAbs) || slug}`
+
     if (skipPrompts) {
-        const abs = resolve(defaultTarget)
-        const err = validateTargetDir(abs)
+        const err = validateTargetDir(defaultAbs)
         if (err) fail(`Invalid default target directory: ${err}`)
-        return abs
+        return defaultAbs
     }
+
     const raw = cancelIf(
         await text({
             message: 'Target directory',
-            initialValue: defaultTarget,
+            initialValue: defaultDisplay,
             validate: (v) => validateTargetDir(resolve(v)) ?? undefined,
         })
     )
