@@ -1,6 +1,6 @@
 {
     "name": "@tinycld/create-package",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "description": "Scaffolder for @tinycld feature packages",
     "type": "module",
     "license": "MIT",
