@@ -20,7 +20,7 @@ bun install
 bun run packages:link ../{{PKG_SLUG}}
 
 # Run the full stack
-bun run dev
+bun run start
 ```
 
 ## Standalone checks

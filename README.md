@@ -172,7 +172,7 @@ bun run checks
 
 Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase, etc. No further changes to `tinycld` or `core` are needed.
 
-> ⚠️ **`tinycld/metro.config.cjs` scans `packages/` once at boot.** If you link a new package while `bun run dev` is already running, restart the dev server (`bun run dev:clean`) so Metro's resolver picks it up. CI is fine — it always starts fresh.
+> ⚠️ **`tinycld/metro.config.cjs` scans `packages/` once at boot.** If you link a new package while `bun run start` is already running, restart it (Ctrl-C, then `bun run start`) so Metro's resolver picks it up. CI is fine — it always starts fresh.
 
 ### Day-to-day development
 
@@ -180,7 +180,7 @@ Most work happens **inside `tinycld/`** with your package linked. Run the app, m
 
 ```sh
 cd ../tinycld
-bun run dev          # expo + pocketbase + ssl proxy
+bun run start        # expo + pocketbase, fronted by a single-port dev proxy
 bun run checks       # biome + tsc — covers all linked packages including yours
 bun run test:unit    # vitest, includes your tests/ via the packages glob
 ```

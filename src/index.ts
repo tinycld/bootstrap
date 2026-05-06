@@ -108,7 +108,7 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     lines.push('  bun run checks')
     lines.push('')
 
-    lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase)`)}`)
+    lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase, single-port dev proxy)`)}`)
     if (!linked) lines.push('  cd ../tinycld')
     lines.push('  bun run start')
     lines.push('')
