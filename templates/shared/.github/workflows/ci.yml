@@ -37,11 +37,8 @@ jobs:
         working-directory: tinycld
         run: bun run packages:link ../{{PKG_SLUG}}
 
-      - name: Expose tinycld's node_modules to {{PKG_SLUG}}
-        run: ln -s ../tinycld/node_modules {{PKG_SLUG}}/node_modules
-
-      - name: Lint {{PKG_SLUG}}
-        working-directory: {{PKG_SLUG}}
+      - name: Lint (biome lives in tinycld and lints linked {{PKG_SLUG}} via app rules)
+        working-directory: tinycld
         run: bun run lint
 
       # Typecheck runs from inside tinycld so module resolution sees the

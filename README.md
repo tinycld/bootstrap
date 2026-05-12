@@ -78,7 +78,6 @@ my-feature/
 ├── .github/workflows/ci.yml           # lint + typecheck + unit tests; clones the tinycld app shell + links self
 ├── .gitignore                          # node_modules, *.tsbuildinfo, bun.lock, .DS_Store
 ├── README.md                           # developer-facing onboarding for this package
-├── biome.json                          # same config all tinycld siblings use
 ├── manifest.ts                         # name, slug, routes, nav, collections, seed, server, ...
 ├── package.json                        # @tinycld/my-feature, peer deps, scripts, exports map
 ├── tsconfig.json                       # extends ../tinycld/packages/@tinycld/core/tsconfig.json
@@ -117,7 +116,6 @@ my-service/
 ├── .github/workflows/ci.yml
 ├── .gitignore
 ├── README.md
-├── biome.json
 ├── manifest.ts                         # name, slug, description, settings[] only
 ├── package.json
 ├── tsconfig.json
@@ -194,8 +192,9 @@ The package's `.github/workflows/ci.yml` reproduces the link-and-check dance loc
 1. Clone `tinycld/tinycld` as a sibling. (Core ships inside the app shell; no separate core clone needed.)
 2. `bun install` inside `tinycld/` (this also runs the package generator via the postinstall hook).
 3. `bun run packages:link ../<your-pkg>` from `tinycld/`.
-4. Lint and unit-test from inside the package directory (with `node_modules` symlinked to `../tinycld/node_modules`).
-5. **Typecheck from inside `tinycld/`**, not from the package — the app shell's tsconfig pulls in `expo`'s base, `uniwind` global type augments (which add `className` to RN components), and the live `~/types/pbSchema` generated from PocketBase. A standalone `tsc` invocation inside the package can't see those.
+4. **Lint from inside `tinycld/`** (`bun run lint`). Biome lives in the app shell and its config (`tinycld/biome.json`) is the single source of truth for every linked package. There is no `biome.json` in the package repo.
+5. **Typecheck from inside `tinycld/`** (`bun run typecheck`) — the app shell's tsconfig pulls in `expo`'s base, `uniwind` global type augments (which add `className` to RN components), and the live `~/types/pbSchema` generated from PocketBase. A standalone `tsc` invocation inside the package can't see those.
+6. Run unit tests from the package (vitest discovers them via the `packages/@*/*/tests/**` glob in `tinycld/vitest.config.ts`).
 
 When you push, GitHub Actions runs that exact flow.
 
@@ -230,7 +229,7 @@ Templates live under `templates/`:
 
 ```
 templates/
-├── shared/             # files identical across presets (biome, tsconfig, CI workflow, README, .gitignore, tests/manifest.test.ts)
+├── shared/             # files identical across presets (tsconfig, CI workflow, README, .gitignore, tests/manifest.test.ts)
 ├── full/               # data-package preset (manifest, package.json, screens, sidebar, provider, collections, types, seed, pb-migrations, server)
 └── settings-only/      # settings-only preset (manifest, package.json, types, settings/main.tsx)
 ```
