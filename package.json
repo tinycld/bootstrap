@@ -24,9 +24,9 @@
         "lint": "biome check .",
         "lint:fix": "biome check --write .",
         "typecheck": "tsc --noEmit",
-        "checks": "bun run lint && bun run typecheck",
+        "checks": "pnpm run lint && pnpm run typecheck",
         "test": "vitest run",
-        "prepublishOnly": "bun run checks && bun run test && bun run build",
+        "prepublishOnly": "pnpm run checks && pnpm run test && pnpm run build",
         "release": "npm publish"
     },
     "dependencies": {

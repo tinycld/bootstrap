@@ -51,11 +51,11 @@ export async function offerLinkPackage({ packageName, targetDir, mode }: LinkPac
     }
 
     const install = spinner()
-    install.start(`Installing ${APP_DIR_NAME} dependencies (bun install)`)
-    const inst = spawnSync('bun', ['install'], { cwd: appDir, stdio: 'pipe', encoding: 'utf8' })
+    install.start(`Installing ${APP_DIR_NAME} dependencies (pnpm install)`)
+    const inst = spawnSync('pnpm', ['install'], { cwd: appDir, stdio: 'pipe', encoding: 'utf8' })
     if (inst.status !== 0) {
-        install.stop(pc.red('bun install failed'), 1)
-        log.error(inst.stderr.trim() || 'bun install exited non-zero')
+        install.stop(pc.red('pnpm install failed'), 1)
+        log.error(inst.stderr.trim() || 'pnpm install exited non-zero')
         return true
     }
     install.stop(`Installed ${APP_DIR_NAME} dependencies`)
@@ -66,7 +66,7 @@ export async function offerLinkPackage({ packageName, targetDir, mode }: LinkPac
     const link = spinner()
     link.start(`Linking ${packageName}`)
     const locator = relative(appDir, targetDir) || targetDir
-    const linkResult = spawnSync('bun', ['run', 'packages:link', locator], {
+    const linkResult = spawnSync('pnpm', ['run', 'packages:link', locator], {
         cwd: appDir,
         stdio: 'pipe',
         encoding: 'utf8',

@@ -6,14 +6,14 @@ Modeled after [`create-vite`](https://github.com/vitejs/vite/tree/main/packages/
 
 ## Requirements
 
-- **[Bun](https://bun.sh)** (recommended) or Node ≥ 24 (the package's `engines.node` is `>=24`; older Node may work but is unsupported).
-- A local `tinycld/tinycld` (app shell) checkout as a sibling of the package you're scaffolding. The app shell bundles `@tinycld/core` at `packages/@tinycld/core/` — the scaffolded package's `tsconfig` extends `../tinycld/packages/@tinycld/core/tsconfig.json` and aliases `@tinycld/core/*` to `../tinycld/packages/@tinycld/core/*`. Linking is done from the app shell via `bun run packages:link`. **The scaffolder will offer to clone and link the app shell for you** — the linking step is interactive (or scripted via `--link` / `--no-link`).
+- **[pnpm](https://pnpm.io)** (recommended) on Node ≥ 24 (the package's `engines.node` is `>=24`; older Node may work but is unsupported).
+- A local `tinycld/tinycld` (app shell) checkout as a sibling of the package you're scaffolding. The app shell bundles `@tinycld/core` at `packages/@tinycld/core/` — the scaffolded package's `tsconfig` extends `../tinycld/packages/@tinycld/core/tsconfig.json` and aliases `@tinycld/core/*` to `../tinycld/packages/@tinycld/core/*`. Linking is done from the app shell via `pnpm run packages:link`. **The scaffolder will offer to clone and link the app shell for you** — the linking step is interactive (or scripted via `--link` / `--no-link`).
 - `git` + `gh` if you intend to use the suggested "initial push" next-step — both are optional.
 
 ## Usage
 
 ```sh
-bunx @tinycld/create-package my-feature
+pnpm dlx @tinycld/create-package my-feature
 ```
 
 You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/<orgSlug>/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
@@ -31,7 +31,7 @@ You'll be walked through an interactive prompt. The positional argument (`my-fea
 | **Keyboard shortcut** (full only) | `f` | Single lowercase letter, or blank. |
 | **Include a Go server?** (full only) | `y` / `n` | If no, `server/` and the manifest's `server` field are omitted. |
 | **Target directory** | `./my-feature` | Default creates the new repo as a child of the current directory. Must not exist or must be empty. |
-| **Link into the app shell?** | `y` / `n` | After scaffolding, the CLI offers to clone (or use existing) `tinycld` app shell, run `bun install` in it, and link this package. Suppress with `--no-link`. |
+| **Link into the app shell?** | `y` / `n` | After scaffolding, the CLI offers to clone (or use existing) `tinycld` app shell, run `pnpm install` in it, and link this package. Suppress with `--no-link`. |
 
 ### Flags (non-interactive use)
 
@@ -54,13 +54,13 @@ Every prompt has a corresponding flag. Pass `--yes` (or `-y`) to accept all defa
 Example, fully non-interactive:
 
 ```sh
-bunx @tinycld/create-package my-feature \
+pnpm dlx @tinycld/create-package my-feature \
     --yes --no-link \
     --description "Tracks widgets across the org" \
     --preset full --icon box --nav-order 25 --shortcut w
 ```
 
-`--help` is not wired (yet) — run `bunx @tinycld/create-package` with no argv to discover prompts interactively.
+`--help` is not wired (yet) — run `pnpm dlx @tinycld/create-package` with no argv to discover prompts interactively.
 
 ## Presets
 
@@ -76,7 +76,7 @@ Matches the shape of `@tinycld/contacts`, `@tinycld/mail`, `@tinycld/calendar`, 
 ```
 my-feature/
 ├── .github/workflows/ci.yml           # lint + typecheck + unit tests; clones the tinycld app shell + links self
-├── .gitignore                          # node_modules, *.tsbuildinfo, bun.lock, .DS_Store
+├── .gitignore                          # node_modules, *.tsbuildinfo, lockfiles, .DS_Store
 ├── README.md                           # developer-facing onboarding for this package
 ├── manifest.ts                         # name, slug, routes, nav, collections, seed, server, ...
 ├── package.json                        # @tinycld/my-feature, peer deps, scripts, exports map
@@ -162,15 +162,15 @@ gh repo create tinycld/my-feature --public --source=. --push
 
 # 2. Link into the tinycld app shell so you can develop against it
 cd ../tinycld
-bun run packages:link ../my-feature
+pnpm run packages:link ../my-feature
 
 # 3. Verify (still inside tinycld/)
-bun run checks
+pnpm run checks
 ```
 
 Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase, etc. No further changes to `tinycld` or `core` are needed.
 
-> ⚠️ **`tinycld/metro.config.cjs` scans `packages/` once at boot.** If you link a new package while `bun run start` is already running, restart it (Ctrl-C, then `bun run start`) so Metro's resolver picks it up. CI is fine — it always starts fresh.
+> ⚠️ **`tinycld/metro.config.cjs` scans `packages/` once at boot.** If you link a new package while `pnpm run start` is already running, restart it (Ctrl-C, then `pnpm run start`) so Metro's resolver picks it up. CI is fine — it always starts fresh.
 
 ### Day-to-day development
 
@@ -178,9 +178,9 @@ Most work happens **inside `tinycld/`** with your package linked. Run the app, m
 
 ```sh
 cd ../tinycld
-bun run start        # expo + pocketbase, fronted by a single-port dev proxy
-bun run checks       # biome + tsc — covers all linked packages including yours
-bun run test:unit    # vitest, includes your tests/ via the packages glob
+pnpm run start        # expo + pocketbase, fronted by a single-port dev proxy
+pnpm run checks       # biome + tsc — covers all linked packages including yours
+pnpm run test:unit    # vitest, includes your tests/ via the packages glob
 ```
 
 Hot reload picks up changes in your package the same way as core code, since it's symlinked.
@@ -190,10 +190,10 @@ Hot reload picks up changes in your package the same way as core code, since it'
 The package's `.github/workflows/ci.yml` reproduces the link-and-check dance locally. The shape:
 
 1. Clone `tinycld/tinycld` as a sibling. (Core ships inside the app shell; no separate core clone needed.)
-2. `bun install` inside `tinycld/` (this also runs the package generator via the postinstall hook).
-3. `bun run packages:link ../<your-pkg>` from `tinycld/`.
-4. **Lint from inside `tinycld/`** (`bun run lint`). Biome lives in the app shell and its config (`tinycld/biome.json`) is the single source of truth for every linked package. There is no `biome.json` in the package repo.
-5. **Typecheck from inside `tinycld/`** (`bun run typecheck`) — the app shell's tsconfig pulls in `expo`'s base, `uniwind` global type augments (which add `className` to RN components), and the live `~/types/pbSchema` generated from PocketBase. A standalone `tsc` invocation inside the package can't see those.
+2. `pnpm install` inside `tinycld/` (this also runs the package generator via the postinstall hook).
+3. `pnpm run packages:link ../<your-pkg>` from `tinycld/`.
+4. **Lint from inside `tinycld/`** (`pnpm run lint`). Biome lives in the app shell and its config (`tinycld/biome.json`) is the single source of truth for every linked package. There is no `biome.json` in the package repo.
+5. **Typecheck from inside `tinycld/`** (`pnpm run typecheck`) — the app shell's tsconfig pulls in `expo`'s base, `uniwind` global type augments (which add `className` to RN components), and the live `~/types/pbSchema` generated from PocketBase. A standalone `tsc` invocation inside the package can't see those.
 6. Run unit tests from the package (vitest discovers them via the `packages/@*/*/tests/**` glob in `tinycld/vitest.config.ts`).
 
 When you push, GitHub Actions runs that exact flow.
@@ -259,13 +259,13 @@ Adding a new placeholder requires one line in `src/substitute.ts`'s `buildPlaceh
 ### Local development of the scaffolder itself
 
 ```sh
-bun install
-bun run dev my-feature --target /tmp/scratch       # tsx live-runs src/index.ts
-bun run lint                                       # biome
-bun run typecheck                                  # tsc --noEmit
-bun run checks                                     # both of the above
-bun run test                                       # vitest: substitute + validate + end-to-end scaffold into tmpdir
-bun run build                                      # compile src/ → dist/ (what gets published)
+pnpm install
+pnpm run dev my-feature --target /tmp/scratch       # tsx live-runs src/index.ts
+pnpm run lint                                       # biome
+pnpm run typecheck                                  # tsc --noEmit
+pnpm run checks                                     # both of the above
+pnpm run test                                       # vitest: substitute + validate + end-to-end scaffold into tmpdir
+pnpm run build                                      # compile src/ → dist/ (what gets published)
 ```
 
 The scaffolder tests invoke `copyTemplate` into a tmp directory and assert the expected tree, file contents, and placeholder substitutions for both presets. The end-to-end flow (link into a real `tinycld/` checkout and boot the dev server) is covered manually — see git history for the validation playbook.
@@ -282,11 +282,11 @@ git push --tags
 
 Publishing needs an `NPM_TOKEN` repo secret (npm "automation" token scoped to `@tinycld`). Add it once at Settings → Secrets → Actions.
 
-`prepublishOnly` runs `bun run checks && bun run test && bun run build` before any publish, so a broken tree never reaches npm.
+`prepublishOnly` runs `pnpm run checks && pnpm run test && pnpm run build` before any publish, so a broken tree never reaches npm.
 
 ## Design notes
 
-- **Templates are embedded in the npm package**, not fetched from a separate repo. `bunx` grabs them once; scaffolding is offline thereafter.
+- **Templates are embedded in the npm package**, not fetched from a separate repo. `pnpm dlx` grabs them once; scaffolding is offline thereafter.
 - **Direct string replacement**, no handlebars / EJS. Simpler, fewer moving parts, no runtime template compiler.
 - **No destructive actions**: the CLI refuses to overwrite a non-empty target directory and never touches git, gh, or your local repos without consent. The clone-and-link step is opt-in (`--link` / interactive prompt).
 - **Two presets, not N flags**. We have exactly two shapes of feature package in the tinycld ecosystem today (data package, settings-only); offering a fine-grained matrix of "routes y/n, server y/n, …" adds prompt-fatigue with no real benefit.
