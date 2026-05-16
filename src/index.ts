@@ -100,17 +100,17 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     if (!linked) {
         lines.push(`  ${pc.dim(`# ${step++}. Link into the tinycld app shell`)}`)
         lines.push('  cd ../tinycld')
-        lines.push(`  pnpm run packages:link ../${slug}`)
+        lines.push(`  npm run packages:link ../${slug}`)
         lines.push('')
     }
 
     lines.push(`  ${pc.dim(`# ${step++}. Verify (biome + tsc run from the app shell and cover the linked package)`)}`)
     if (linked) lines.push('  cd ../tinycld')
-    lines.push('  pnpm run checks')
+    lines.push('  npm run checks')
     lines.push('')
 
     lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase, single-port dev proxy)`)}`)
-    lines.push('  pnpm run start')
+    lines.push('  npm run start')
     lines.push('')
 
     console.log(lines.join('\n'))

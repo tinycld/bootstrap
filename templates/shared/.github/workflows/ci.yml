@@ -23,9 +23,11 @@ jobs:
           repository: ${{ env.APP_REPO }}
           ref: ${{ env.APP_REF }}
           path: tinycld
-      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
         with:
-          version: 11.1.1
+          node-version-file: tinycld/.node-version
+          cache: npm
+          cache-dependency-path: tinycld/package-lock.json
 
       # The app shell bundles @tinycld/core at packages/@tinycld/core/. This
       # package's tsconfig path "@tinycld/core/*":
@@ -33,15 +35,15 @@ jobs:
       # directive both point directly there.
       - name: Install app shell deps
         working-directory: tinycld
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Link {{PKG_SLUG}} into tinycld app shell
         working-directory: tinycld
-        run: pnpm run packages:link ../{{PKG_SLUG}}
+        run: npm run packages:link ../{{PKG_SLUG}}
 
       - name: Lint (biome lives in tinycld and lints linked {{PKG_SLUG}} via app rules)
         working-directory: tinycld
-        run: pnpm run lint
+        run: npm run lint
 
       # Typecheck runs from inside tinycld so module resolution sees the
       # full app-shell tree (uniwind augments, expo types, etc) — running
@@ -50,8 +52,8 @@ jobs:
         working-directory: tinycld
         env:
           NODE_OPTIONS: --preserve-symlinks
-        run: pnpm run typecheck
+        run: npm run typecheck
 
       - name: Run unit tests
         working-directory: {{PKG_SLUG}}
-        run: pnpm exec vitest run
+        run: npx vitest run

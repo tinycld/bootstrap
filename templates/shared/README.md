@@ -14,13 +14,13 @@ git clone git@github.com:tinycld/{{PKG_SLUG}}.git
 
 # Install deps in the app shell
 cd tinycld
-pnpm install
+npm install
 
 # Link this package into the app shell
-pnpm run packages:link ../{{PKG_SLUG}}
+npm run packages:link ../{{PKG_SLUG}}
 
 # Run the full stack
-pnpm run start
+npm run start
 ```
 
 ## Standalone checks
@@ -34,9 +34,9 @@ config lives in `tinycld/biome.json` and applies to every linked package
 
 ```sh
 cd ../tinycld
-pnpm run packages:link ../{{PKG_SLUG}}   # only needed once per checkout
-pnpm run lint                            # scans this package via the app's biome rules
-pnpm run typecheck                       # full app-shell tsc
+npm run packages:link ../{{PKG_SLUG}}   # only needed once per checkout
+npm run lint                            # scans this package via the app's biome rules
+npm run typecheck                       # full app-shell tsc
 ```
 
 ## CI
