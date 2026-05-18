@@ -4,6 +4,8 @@ dist/
 .DS_Store
 coverage/
 .vitest/
+# Per-developer Claude Code workspace (session worktrees, scratch files).
+.claude/
 
 # Non-npm lockfiles. This package is published to npm and ships
 # package-lock.json — anything else is from a contributor running
