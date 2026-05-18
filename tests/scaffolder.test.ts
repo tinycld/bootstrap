@@ -40,7 +40,6 @@ describe('copyTemplate — full preset', () => {
             'package.json',
             'manifest.ts',
             'tsconfig.json',
-            'biome.json',
             '.gitignore',
             'README.md',
             'tinycld/my-feature/types.ts',
@@ -175,7 +174,6 @@ describe('copyTemplate — settings-only preset', () => {
             'package.json',
             'manifest.ts',
             'tsconfig.json',
-            'biome.json',
             '.gitignore',
             'README.md',
             'tinycld/my-feature/types.ts',
@@ -197,6 +195,9 @@ describe('copyTemplate — settings-only preset', () => {
             'tinycld/my-feature/sidebar.tsx',
             'tinycld/my-feature/provider.tsx',
             'tinycld/my-feature/collections.ts',
+            // Biome lives only in the app shell — siblings never ship
+            // their own biome.json (see tinycld/CLAUDE.md).
+            'biome.json',
         ]
         for (const p of shouldNotExist) {
             expect(existsSync(join(target, p)), `unexpected ${p}`).toBe(false)
