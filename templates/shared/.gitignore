@@ -1,4 +1,10 @@
 node_modules/
 *.tsbuildinfo
 .DS_Store
+# Linked-sibling packages must never ship a lockfile — peer deps
+# resolve through the app shell's install. Ignore all common lockfiles
+# in case `npm install` (or any other PM) accidentally runs here.
+package-lock.json
 pnpm-lock.yaml
+yarn.lock
+bun.lock

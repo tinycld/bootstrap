@@ -4,3 +4,10 @@ dist/
 .DS_Store
 coverage/
 .vitest/
+
+# Non-npm lockfiles. This package is published to npm and ships
+# package-lock.json — anything else is from a contributor running
+# bun/pnpm/yarn locally and shouldn't be committed.
+bun.lock
+pnpm-lock.yaml
+yarn.lock
