@@ -26,4 +26,7 @@ describe('parseArgs --with (repeatable, collects features)', () => {
     it('defaults with to undefined when absent', () => {
         expect(parseArgs(['--tooling']).with).toBeUndefined()
     })
+    it('throws when --with has no value', () => {
+        expect(() => parseArgs(['--with'])).toThrow(/feature slug/)
+    })
 })
