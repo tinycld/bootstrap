@@ -1,5 +1,5 @@
 /**
- * Minimal argv parser for create-package. Every prompt has a
+ * Minimal argv parser for bootstrap. Every prompt has a
  * corresponding --flag; when a flag is set, the associated prompt is
  * skipped. --yes accepts all defaults.
  */

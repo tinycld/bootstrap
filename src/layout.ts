@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 /**
- * Workspace-layout decisions for create-package.
+ * Workspace-layout decisions for bootstrap.
  *
  * When invoked from a directory that already contains a tinycld app shell
  * checkout (a child directory named `tinycld/` whose package.json declares

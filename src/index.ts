@@ -9,7 +9,7 @@ import { offerLinkPackage } from './link-package.ts'
 import { runPrompts } from './prompts.ts'
 
 async function main(): Promise<void> {
-    intro(pc.bold(pc.cyan('@tinycld/create-package')))
+    intro(pc.bold(pc.cyan('@tinycld/bootstrap')))
 
     let args: ReturnType<typeof parseArgs>
     try {

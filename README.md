@@ -1,4 +1,4 @@
-# @tinycld/create-package
+# @tinycld/bootstrap
 
 Interactive scaffolder for `@tinycld` feature packages. One command produces a repo starter — manifest, CI workflow, lint/typecheck, sample screens, seed, migrations, and (optionally) a Go server — already wired to link into the [`tinycld`](https://github.com/tinycld/tinycld) app shell (which bundles `@tinycld/core`), use the `@tinycld/core/**` import convention, and pass its own CI.
 
@@ -13,7 +13,7 @@ Modeled after [`create-vite`](https://github.com/vitejs/vite/tree/main/packages/
 ## Usage
 
 ```sh
-npx @tinycld/create-package my-feature
+npx @tinycld/bootstrap my-feature
 ```
 
 You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/<orgSlug>/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
@@ -54,13 +54,13 @@ Every prompt has a corresponding flag. Pass `--yes` (or `-y`) to accept all defa
 Example, fully non-interactive:
 
 ```sh
-npx @tinycld/create-package my-feature \
+npx @tinycld/bootstrap my-feature \
     --yes --no-link \
     --description "Tracks widgets across the org" \
     --preset full --icon box --nav-order 25 --shortcut w
 ```
 
-`--help` is not wired (yet) — run `npx @tinycld/create-package` with no argv to discover prompts interactively.
+`--help` is not wired (yet) — run `npx @tinycld/bootstrap` with no argv to discover prompts interactively.
 
 ## Presets
 

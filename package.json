@@ -1,5 +1,5 @@
 {
-    "name": "@tinycld/create-package",
+    "name": "@tinycld/bootstrap",
     "version": "0.0.4",
     "description": "Scaffolder for @tinycld feature packages",
     "type": "module",
@@ -9,7 +9,7 @@
         "url": "git+https://github.com/tinycld/create-package.git"
     },
     "bin": {
-        "create-package": "./dist/index.js"
+        "bootstrap": "./dist/index.js"
     },
     "files": [
         "dist",
