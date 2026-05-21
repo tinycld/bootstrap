@@ -18,6 +18,8 @@ export interface ParsedArgs {
     target?: string
     link?: boolean
     yes?: boolean
+    tooling?: boolean
+    with?: string[]
 }
 
 interface FlagError {
@@ -34,7 +36,7 @@ export class ArgParseError extends Error {
 
 const STRING_FLAGS = new Set(['name', 'description', 'preset', 'icon', 'shortcut', 'target'])
 const NUMBER_FLAGS = new Set(['nav-order'])
-const BOOL_FLAGS = new Set(['server', 'link', 'yes'])
+const BOOL_FLAGS = new Set(['server', 'link', 'yes', 'tooling'])
 const BOOL_ALIASES: Record<string, string> = { y: 'yes' }
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -69,6 +71,17 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
         if (isNegated) {
             issues.push({ flag: rawName, reason: 'not a boolean flag' })
+            continue
+        }
+
+        if (canonical === 'with') {
+            const v = inlineValue ?? argv[++i]
+            if (v === undefined || v.startsWith('-')) {
+                issues.push({ flag: 'with', reason: 'requires a feature slug' })
+                continue
+            }
+            out.with = out.with ?? []
+            out.with.push(v)
             continue
         }
 
@@ -139,6 +152,9 @@ function setBool(out: ParsedArgs, name: string, value: boolean): void {
             break
         case 'yes':
             out.yes = value
+            break
+        case 'tooling':
+            out.tooling = value
             break
     }
 }
