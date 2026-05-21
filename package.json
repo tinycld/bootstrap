@@ -9,7 +9,7 @@
         "url": "git+https://github.com/tinycld/bootstrap.git"
     },
     "bin": {
-        "bootstrap": "./dist/index.js"
+        "bootstrap": "dist/index.js"
     },
     "files": [
         "dist",
