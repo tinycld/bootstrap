@@ -81,14 +81,14 @@ async function main(): Promise<void> {
 }
 
 function detectLayoutFromTarget(targetDir: string, slug: string): 'attach' | 'bootstrap' {
-    // If cwd has a tinycld/ child (workspace mode) and target is a sibling of
-    // that tinycld, we're in attach mode. Otherwise the scaffolder created a
-    // wrapper under cwd and dropped tinycld inside it (bootstrap mode).
+    // If cwd is itself a workspace root and target is a direct child of it,
+    // we're in attach mode. Otherwise the scaffolder created a wrapper under
+    // cwd and the workspace meta-repo gets cloned inside it (bootstrap mode).
     const detected = detectLayout(slug)
     if (detected.mode === 'attach' && targetDir === detected.targetDir) return 'attach'
     if (detected.mode === 'bootstrap' && targetDir === detected.targetDir) return 'bootstrap'
     // User passed an explicit --target. Infer from the on-disk shape: if the
-    // parent of targetDir has a `tinycld` child, treat as attach.
+    // parent of targetDir is itself a workspace root, treat as attach.
     const parent = dirname(targetDir)
     const looksAttached = detectLayout(slug, parent).mode === 'attach'
     return looksAttached ? 'attach' : 'bootstrap'

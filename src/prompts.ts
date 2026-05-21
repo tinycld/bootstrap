@@ -223,9 +223,9 @@ async function resolveTarget(fromArgv: string | undefined, slug: string, skipPro
     }
 
     // No --target: pick a sensible default based on the cwd's existing layout.
-    // If cwd already has a tinycld/ app shell child, attach the new package
-    // alongside it as `<cwd>/<slug>`. Otherwise bootstrap a wrapper workspace
-    // under `<cwd>/tinycld-<slug>/` and place the package inside it.
+    // If cwd is itself a workspace root, attach the new package as a direct
+    // child `<cwd>/<slug>`. Otherwise bootstrap a wrapper workspace under
+    // `<cwd>/tinycld-<slug>/` and place the package inside it.
     const layout = detectLayout(slug)
     const defaultAbs = layout.targetDir
     const defaultDisplay = `./${relative(process.cwd(), defaultAbs) || slug}`
