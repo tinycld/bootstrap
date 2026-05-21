@@ -40,7 +40,7 @@ app shell's biome config, tsconfig base, and vitest/playwright configs (so
 cd {{PKG_SLUG}}
 npx tinycld-pkg check       # biome + typecheck
 npx tinycld-pkg test        # vitest unit tests
-npx tinycld-pkg test:e2e    # playwright e2e specs
+npx tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
 ```
 
 There is no `biome.json` in this repo — biome lives only in the app shell and
@@ -60,6 +60,6 @@ locally.
 - `manifest.ts` — the single source of truth for this package's capabilities
 - `package.json` — name, exports map, `tinycld-pkg` scripts, peer deps
 - `tsconfig.json` — extends the app shell's package tsconfig base
-- `vitest.config.ts` / `playwright.config.ts` — thin configs spreading the app's
+- `vitest.config.ts` (and `playwright.config.ts` — full preset only) — thin configs spreading the app's
 - `tinycld/{{PKG_SLUG}}/` — the package's TypeScript surface (screens, collections, …)
-- `tests/` — vitest unit tests and Playwright e2e specs
+- `tests/` — vitest unit tests (and Playwright e2e specs — full preset only)
