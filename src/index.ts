@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs'
-import { dirname, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { intro, outro } from '@clack/prompts'
 import pc from 'picocolors'
@@ -63,9 +63,11 @@ async function main(): Promise<void> {
 
     copyTemplate(resolveTemplatesRoot(import.meta.url), answers)
 
+    // The package lives at `<workspaceDir>/<slug>`, so its parent is the
+    // workspace dir in both attach (cwd) and bootstrap (wrapper) modes.
     const linked = await offerLinkPackage({
-        packageName: answers.slug,
-        targetDir: answers.targetDir,
+        slug: answers.slug,
+        workspaceDir: dirname(answers.targetDir),
         mode: resolveLinkMode(args),
     })
 
@@ -74,8 +76,8 @@ async function main(): Promise<void> {
 
     // Re-derive the layout from the resolved target so the next-steps output
     // matches whatever path the user actually ended up at (default detection,
-    // explicit --target, or interactive override). The wrapper's parent dir
-    // names where `cd ../tinycld` lands.
+    // explicit --target, or interactive override). It decides whether to print
+    // the bootstrap "self-contained workspace" note.
     const layout = detectLayoutFromTarget(answers.targetDir, answers.slug)
     printNextSteps({ slug: answers.slug, relTarget, linked, layout })
 }
@@ -112,13 +114,18 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     const lines: string[] = ['', pc.bold('Next steps:'), '']
     let step = 1
 
+    // The workspace root, relative to cwd. In bootstrap mode the package sits at
+    // `<wrapper>/<slug>`, so the wrapper (`dirname(relTarget)`) is the workspace
+    // root. In attach mode cwd already IS the workspace root, so it's `.`.
+    const wsRoot = dirname(relTarget) || '.'
+
     if (layout === 'bootstrap') {
-        // Highlight that the scaffolder also dropped a tinycld checkout
-        // alongside the new package. New users may not realize they just
-        // got a self-contained workspace.
+        // The meta-repo was cloned into the wrapper, so the wrapper itself is the
+        // workspace root and the new package is a member directory inside it.
+        // New users may not realize they just got a self-contained workspace.
         lines.push(
             pc.dim(
-                `  Scaffolded a self-contained workspace alongside the package.\n  The tinycld app shell lives at ./${dirname(relTarget)}/tinycld/.\n`
+                `  Scaffolded a self-contained tinycld workspace.\n  The workspace root is ./${wsRoot}/ and your package is ./${relTarget}/.\n  The app member (Expo + PocketBase) is ./${wsRoot}/app/.\n`
             )
         )
     }
@@ -132,19 +139,25 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     lines.push('')
 
     if (!linked) {
-        lines.push(`  ${pc.dim(`# ${step++}. Link into the tinycld app shell`)}`)
-        lines.push('  cd ../tinycld')
-        lines.push(`  npm run packages:link ../${slug}`)
+        // Linking is now a workspace-root `npm install`: the package dir already
+        // exists; add it to the root package.json `workspaces` if it isn't a
+        // member yet, then install — npm symlinks it and the postinstall runs
+        // the generator.
+        lines.push(`  ${pc.dim(`# ${step++}. Link into the workspace (add as a member, then install)`)}`)
+        if (wsRoot !== '.') lines.push(`  cd ${wsRoot}`)
+        lines.push(`  # ensure "${slug}" is in this package.json's "workspaces" array, then:`)
+        lines.push('  npm install')
         lines.push('')
     }
 
-    lines.push(`  ${pc.dim(`# ${step++}. Verify (biome + tsc run from the app shell and cover the linked package)`)}`)
-    if (linked) lines.push('  cd ../tinycld')
-    lines.push('  npm run checks')
+    lines.push(`  ${pc.dim(`# ${step++}. Verify the package (biome + tsc, scoped to this member)`)}`)
+    lines.push(`  cd ${join(wsRoot, slug)}`)
+    lines.push('  npx tinycld-pkg check')
     lines.push('')
 
     lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase, single-port dev proxy)`)}`)
-    lines.push('  npm run start')
+    lines.push(`  cd ${join(wsRoot, 'app')}`)
+    lines.push('  npm run dev')
     lines.push('')
 
     console.log(lines.join('\n'))

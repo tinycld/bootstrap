@@ -1,98 +1,147 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { dirname, join, relative } from 'node:path'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { confirm, isCancel, log, spinner } from '@clack/prompts'
 import pc from 'picocolors'
+import { looksLikeWorkspaceRoot } from './layout.ts'
 
-const APP_REPO_URL = 'git@github.com:tinycld/tinycld.git'
-const APP_DIR_NAME = 'tinycld'
+export const WORKSPACE_REPO_URL = 'git@github.com:tinycld/workspace.git'
 
 export type LinkMode = 'prompt' | 'accept' | 'skip'
 
 export interface LinkPackageInput {
-    packageName: string
-    targetDir: string
+    slug: string
+    workspaceDir: string
     mode: LinkMode
+    /** Injected for tests; defaults to a real `git clone`-into-an-existing-dir. */
+    clone?: (url: string, dest: string) => boolean
+    /** Injected for tests; defaults to a real `npm install`. */
+    install?: (cwd: string) => boolean
 }
 
 /**
- * Returns true if the user chose to link (even if a subprocess failed —
- * the error is already logged, and we don't want to follow up with
- * "here are the manual steps" when the user already expressed intent).
- * Returns false only if linking was declined or skipped.
- *
- * Linking happens against the tinycld **app shell** (sibling repo
- * `tinycld/tinycld`), which owns `packages:link` and bundles `@tinycld/core`
- * at `packages/@tinycld/core/`. This package's tsconfig
- * (`"@tinycld/core/*": ["../tinycld/packages/@tinycld/core/*"]`) and its Go
- * server's `replace tinycld.org/core => ../../tinycld/packages/@tinycld/core/server`
- * directive both resolve into the bundled core inside the app shell.
+ * Add `slug` to `<workspaceDir>/package.json` `workspaces[]` if it isn't already
+ * there. Idempotent, and a no-op when there's no package.json yet (which is the
+ * case in bootstrap mode before the workspace meta-repo is cloned in).
  */
-export async function offerLinkPackage({ packageName, targetDir, mode }: LinkPackageInput): Promise<boolean> {
+export function ensureMember(workspaceDir: string, slug: string): void {
+    const pkgPath = join(workspaceDir, 'package.json')
+    if (!existsSync(pkgPath)) return
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+    pkg.workspaces = Array.isArray(pkg.workspaces) ? pkg.workspaces : []
+    if (!pkg.workspaces.includes(slug)) {
+        pkg.workspaces.push(slug)
+        writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`)
+    }
+}
+
+/**
+ * Offer to link the freshly-scaffolded package into the TinyCld workspace.
+ *
+ * "Linking" in the workspace layout means: make the package a workspace member
+ * (its dir name appears in the root `package.json` `workspaces[]`) and run
+ * `npm install` at the workspace root — npm creates the `node_modules/@tinycld/*`
+ * symlink and the root `postinstall` runs the generator.
+ *
+ * Two shapes, distinguished by whether `workspaceDir` is already a workspace root:
+ *   - attach: `workspaceDir` already holds the workspace meta-repo (its
+ *     package.json name is `@tinycld/workspace`). No clone — just ensure the
+ *     member and install.
+ *   - bootstrap: `workspaceDir` is a fresh wrapper that only contains the
+ *     scaffolded `<slug>/` so far. Clone the workspace meta-repo *into* it
+ *     (around the existing package dir), then ensure the member and install.
+ *
+ * Returns true if the user chose to link (even if a subprocess failed — the
+ * error is already logged, and we don't want to follow up with manual steps
+ * when the user already expressed intent). Returns false only when linking was
+ * declined or skipped.
+ */
+export async function offerLinkPackage({
+    slug,
+    workspaceDir,
+    mode,
+    clone = realClone,
+    install = realInstall,
+}: LinkPackageInput): Promise<boolean> {
     if (mode === 'skip') return false
 
-    const parentDir = dirname(targetDir)
-    const appDir = join(parentDir, APP_DIR_NAME)
-    const appExists = existsSync(appDir)
+    // A wrapper that isn't yet a workspace root needs the meta-repo cloned in.
+    const needsClone = !looksLikeWorkspaceRoot(workspaceDir)
 
     if (mode === 'prompt') {
-        const prompt = appExists
-            ? `Link ${pc.bold(packageName)} into ${pc.bold(APP_DIR_NAME)} now?`
-            : `Clone ${pc.bold(APP_DIR_NAME)} (shallow) and link ${pc.bold(packageName)} into it now?`
-
-        const answer = await confirm({ message: prompt, initialValue: true })
+        const message = needsClone
+            ? `Clone the tinycld workspace and link ${pc.bold(slug)} now?`
+            : `Link ${pc.bold(slug)} into the workspace now?`
+        const answer = await confirm({ message, initialValue: true })
         if (isCancel(answer) || answer !== true) return false
     }
 
-    if (!appExists) {
-        if (!cloneRepo(APP_REPO_URL, appDir)) return true
-    } else {
-        log.info(`Using existing ${APP_DIR_NAME} at ${appDir}`)
+    if (needsClone) {
+        const s = spinner()
+        s.start('Cloning the tinycld workspace')
+        if (!clone(WORKSPACE_REPO_URL, workspaceDir)) {
+            s.stop(pc.red('Clone failed'), 1)
+            return true
+        }
+        s.stop('Cloned the tinycld workspace')
     }
 
-    const install = spinner()
-    install.start(`Installing ${APP_DIR_NAME} dependencies (npm install)`)
-    const inst = spawnSync('npm', ['install'], { cwd: appDir, stdio: 'pipe', encoding: 'utf8' })
-    if (inst.status !== 0) {
-        install.stop(pc.red('npm install failed'), 1)
-        log.error(inst.stderr.trim() || 'npm install exited non-zero')
+    ensureMember(workspaceDir, slug)
+
+    const i = spinner()
+    i.start('Installing workspace (npm install)')
+    if (!install(workspaceDir)) {
+        i.stop(pc.red('npm install failed'), 1)
         return true
     }
-    install.stop(`Installed ${APP_DIR_NAME} dependencies`)
+    i.stop('Installed workspace')
 
-    // packages:link in tinycld takes a sibling-directory locator and reads
-    // the package name from the sibling's package.json. Pass a path relative
-    // to the app shell so the symlink target stays portable.
-    const link = spinner()
-    link.start(`Linking ${packageName}`)
-    const locator = relative(appDir, targetDir) || targetDir
-    const linkResult = spawnSync('npm', ['run', 'packages:link', locator], {
-        cwd: appDir,
-        stdio: 'pipe',
-        encoding: 'utf8',
-    })
-    if (linkResult.status !== 0) {
-        link.stop(pc.red('Link failed'), 1)
-        log.error(linkResult.stderr.trim() || 'packages:link exited non-zero')
-        return true
-    }
-    link.stop(`Linked ${packageName} into ${APP_DIR_NAME}`)
-
+    log.success(`Linked ${pc.bold(slug)} into the workspace`)
     return true
 }
 
-function cloneRepo(url: string, dest: string): boolean {
-    const s = spinner()
-    s.start(`Cloning ${url} into ${dest}`)
-    const result = spawnSync('git', ['clone', '--depth', '1', url, dest], {
-        stdio: 'pipe',
-        encoding: 'utf8',
-    })
-    if (result.status !== 0) {
-        s.stop(pc.red('Clone failed'), 1)
-        log.error(result.stderr.trim() || 'git clone exited non-zero')
+/**
+ * Clone `url` into `dest`, tolerating a `dest` that already exists and holds
+ * files (e.g. the scaffolded `<slug>/` subdir). `git clone <url> <dest>` refuses
+ * a non-empty target, so we clone into a temp dir on the same filesystem (a
+ * sibling of `dest`) and then move every top-level entry — including `.git` —
+ * into `dest`, skipping anything that would clobber an existing entry.
+ *
+ * Exported for unit testing the clone-into-a-non-empty-wrapper path (against a
+ * local git remote, no network).
+ */
+export function realClone(url: string, dest: string): boolean {
+    const tmp = mkdtempSync(join(dirname(dest), '.tinycld-workspace-'))
+    try {
+        const result = spawnSync('git', ['clone', url, tmp], { stdio: 'pipe', encoding: 'utf8' })
+        if (result.status !== 0) {
+            log.error(result.stderr?.trim() || 'git clone exited non-zero')
+            return false
+        }
+        for (const entry of readdirSync(tmp)) {
+            const target = join(dest, entry)
+            if (existsSync(target)) {
+                // Don't overwrite the already-scaffolded package dir (or any
+                // other pre-existing entry the user dropped in the wrapper).
+                log.warn(`Keeping existing ${entry}; not overwriting from the workspace clone`)
+                continue
+            }
+            renameSync(join(tmp, entry), target)
+        }
+        return true
+    } catch (err) {
+        log.error(err instanceof Error ? err.message : String(err))
+        return false
+    } finally {
+        rmSync(tmp, { recursive: true, force: true })
+    }
+}
+
+function realInstall(cwd: string): boolean {
+    const r = spawnSync('npm', ['install'], { cwd, stdio: 'pipe', encoding: 'utf8' })
+    if (r.status !== 0) {
+        log.error(r.stderr?.trim() || 'npm install exited non-zero')
         return false
     }
-    s.stop(`Cloned ${dest}`)
     return true
 }
