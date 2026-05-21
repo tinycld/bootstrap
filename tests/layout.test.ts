@@ -43,4 +43,12 @@ describe('looksLikeWorkspaceRoot', () => {
         writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'other' }))
         expect(looksLikeWorkspaceRoot(dir)).toBe(false)
     })
+    it('false on a non-existent directory', () => {
+        expect(looksLikeWorkspaceRoot(join(tmpdir(), `definitely-does-not-exist-${Date.now()}`))).toBe(false)
+    })
+    it('false when package.json is malformed JSON', () => {
+        dir = mkdtempSync(join(tmpdir(), 'lay-'))
+        writeFileSync(join(dir, 'package.json'), 'not valid json {')
+        expect(looksLikeWorkspaceRoot(dir)).toBe(false)
+    })
 })
