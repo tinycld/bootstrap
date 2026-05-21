@@ -13,7 +13,14 @@ import { runPrompts } from './prompts.ts'
 
 export function runToolingMode(opts: BootstrapToolingOptions): void {
     const root = opts.root ?? process.cwd()
-    const present = bootstrapTooling({ ...opts, root })
+    // Honor TINYCLD_REPO_BASE (CI sets it to an HTTPS base since runners have no
+    // SSH key). Listed first so an explicit opts.repoBase still wins via spread;
+    // when neither is set, bootstrapTooling falls back to its SSH default.
+    const present = bootstrapTooling({
+        repoBase: process.env.TINYCLD_REPO_BASE,
+        ...opts,
+        root,
+    })
     // Mandatory members must clone — a missing app/core means a broken workspace.
     for (const required of ['app', 'core']) {
         if (!present.includes(required)) {

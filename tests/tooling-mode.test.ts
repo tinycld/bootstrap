@@ -34,4 +34,25 @@ describe('runToolingMode', () => {
             /required member 'app'/
         )
     })
+
+    it('uses TINYCLD_REPO_BASE from the environment for clone URLs', () => {
+        dir = mkdtempSync(join(tmpdir(), 'tool-'))
+        const urls: string[] = []
+        const prev = process.env.TINYCLD_REPO_BASE
+        process.env.TINYCLD_REPO_BASE = 'https://github.com/tinycld'
+        try {
+            runToolingMode({
+                root: dir,
+                clone: (url, _dest) => {
+                    urls.push(url)
+                    return true
+                },
+            })
+        } finally {
+            if (prev === undefined) delete process.env.TINYCLD_REPO_BASE
+            else process.env.TINYCLD_REPO_BASE = prev
+        }
+        // app + core cloned via the HTTPS base from the env var, not the SSH default
+        expect(urls).toEqual(['https://github.com/tinycld/app.git', 'https://github.com/tinycld/core.git'])
+    })
 })
