@@ -13,7 +13,12 @@
         "./hooks/*": "./tinycld/{{PKG_SLUG}}/hooks/*.ts"
     },
     "scripts": {
-        "typecheck": "tsc --noEmit --skipLibCheck"
+        "typecheck": "tinycld-pkg typecheck",
+        "test": "tinycld-pkg test",
+        "check": "tinycld-pkg check"
+    },
+    "devDependencies": {
+        "@tinycld/package-scripts": "*"
     },
     "peerDependencies": {
         "react": ">=19",

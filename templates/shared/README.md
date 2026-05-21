@@ -2,53 +2,64 @@
 
 {{PKG_DESCRIPTION}}
 
-Feature package for the [tinycld](https://github.com/tinycld/tinycld) ecosystem. Lives as a standalone git repo alongside the [`tinycld`](https://github.com/tinycld/tinycld) app shell and other sibling packages (`contacts`, `mail`, `calendar`, `drive`, `google-takeout-import`). The app shell bundles `@tinycld/core` inside it — there is no separate core repo to clone.
+A feature package for the [tinycld](https://tinycld.org/) ecosystem. It lives in
+its own git repo and is developed as a **workspace member** alongside the app
+shell (`app`), `@tinycld/core` (its own standalone repo, cloned as a sibling —
+not bundled), and the other feature packages.
 
 ## Development
 
+The package is one member of a tinycld workspace. To work on it you need a
+workspace root containing at least `app`, `core`, and this package as siblings,
+linked by a single `npm install` at the root.
+
 ```sh
-# Clone the app shell and this package as siblings
-cd ~/code/tinycld
-git clone git@github.com:tinycld/tinycld.git
+# In a fresh workspace directory, clone this package into a member slot…
 git clone git@github.com:tinycld/{{PKG_SLUG}}.git
 
-# Install deps in the app shell
-cd tinycld
+# …then pull in the rest of the workspace tooling (app + core + the root
+# package.json / lockfile). bootstrap --tooling skips dirs that already exist.
+npx @tinycld/bootstrap@latest --tooling
+
+# Link every member with one install at the WORKSPACE ROOT (never inside a
+# member — siblings have no node_modules of their own; deps hoist to the root).
 npm install
 
-# Link this package into the app shell
-npm run packages:link ../{{PKG_SLUG}}
-
-# Run the full stack
-npm run start
+# Run the full stack (Expo + PocketBase, single-port dev proxy) from the app.
+cd app
+npm run dev
 ```
 
-## Standalone checks
+## Checks
 
-Lint and typecheck both run from the app shell — biome and TypeScript live
-there, and the app shell's tsconfig pulls in `expo`'s base config, `uniwind`
-type augments, and the live `~/types/pbSchema` generated from PocketBase,
-none of which a standalone invocation in this package can see. Biome's
-config lives in `tinycld/biome.json` and applies to every linked package
-(there is no `biome.json` in this repo).
+All checks run **scoped to this member** through `tinycld-pkg`, which reuses the
+app shell's biome config, tsconfig base, and vitest/playwright configs (so
+`@tinycld/core/*`, uniwind augments, and PocketBase types all resolve):
 
 ```sh
-cd ../tinycld
-npm run packages:link ../{{PKG_SLUG}}   # only needed once per checkout
-npm run lint                            # scans this package via the app's biome rules
-npm run typecheck                       # full app-shell tsc
+cd {{PKG_SLUG}}
+npx tinycld-pkg check       # biome + typecheck
+npx tinycld-pkg test        # vitest unit tests
+npx tinycld-pkg test:e2e    # playwright e2e specs
 ```
+
+There is no `biome.json` in this repo — biome lives only in the app shell and
+`tinycld-pkg` points it at this member's source.
 
 ## CI
 
-`.github/workflows/ci.yml` runs lint, typecheck, and vitest on every push to
-`main` and every PR. It clones `tinycld/tinycld@main` into a sibling
-directory, installs the app shell's deps, links this package in, and runs
-the checks — exactly what a developer does locally.
+`.github/workflows/ci.yml` runs typecheck, unit tests, and e2e on every push to
+`main` and every PR. It checks out `tinycld/workspace` as the job root, drops
+this PR's code into its member slot, assembles `app` + `core` via
+`@tinycld/bootstrap --tooling`, installs at the workspace root, and runs
+`tinycld-pkg check` / `tinycld-pkg test:e2e` — exactly what a developer runs
+locally.
 
 ## Package anatomy
 
 - `manifest.ts` — the single source of truth for this package's capabilities
-- `package.json` — name, exports map, peer deps
-- `tsconfig.json` — typecheck config (lint config lives in the app shell's `biome.json`)
-- `tests/` — vitest unit tests
+- `package.json` — name, exports map, `tinycld-pkg` scripts, peer deps
+- `tsconfig.json` — extends the app shell's package tsconfig base
+- `vitest.config.ts` / `playwright.config.ts` — thin configs spreading the app's
+- `tinycld/{{PKG_SLUG}}/` — the package's TypeScript surface (screens, collections, …)
+- `tests/` — vitest unit tests and Playwright e2e specs

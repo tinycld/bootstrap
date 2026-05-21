@@ -55,6 +55,8 @@ describe('copyTemplate — full preset', () => {
             'server/register.go',
             'tests/manifest.test.ts',
             '.github/workflows/ci.yml',
+            'vitest.config.ts',
+            'playwright.config.ts',
         ]
         for (const path of expected) {
             expect(existsSync(join(target, path)), `missing ${path}`).toBe(true)
@@ -66,6 +68,29 @@ describe('copyTemplate — full preset', () => {
         const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
         expect(pkg.name).toBe('@tinycld/my-feature')
         expect(pkg.description).toBe('Does a thing.')
+    })
+
+    it('package.json scripts run through tinycld-pkg', () => {
+        const target = scaffold()
+        const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
+        expect(pkg.scripts.typecheck).toBe('tinycld-pkg typecheck')
+        expect(pkg.scripts.test).toBe('tinycld-pkg test')
+        expect(pkg.scripts['test:e2e']).toBe('tinycld-pkg test:e2e')
+        expect(pkg.scripts.check).toBe('tinycld-pkg check')
+        // The old standalone tsc invocation is gone.
+        expect(pkg.scripts.typecheck).not.toContain('tsc')
+        expect(pkg.devDependencies['@tinycld/package-scripts']).toBe('*')
+    })
+
+    it('vitest/playwright configs spread the app shell config', () => {
+        const target = scaffold()
+        const vitest = readFileSync(join(target, 'vitest.config.ts'), 'utf8')
+        expect(vitest).toContain("from '../app/vitest.config'")
+        const playwright = readFileSync(join(target, 'playwright.config.ts'), 'utf8')
+        expect(playwright).toContain("from '../app/playwright.config'")
+        // The symlink path is tokenized to this package's slug.
+        expect(playwright).toContain("'@tinycld', 'my-feature'")
+        expect(playwright).not.toMatch(/\{\{PKG_[A-Z_]+\}\}/)
     })
 
     it('substitutes placeholders in manifest.ts', () => {
@@ -86,16 +111,23 @@ describe('copyTemplate — full preset', () => {
         expect(existsSync(join(target, 'pb-migrations', '1800000000_create_my-feature.js'))).toBe(true)
     })
 
-    it('generates a ci.yml that references the slug and the new app shell', () => {
+    it('generates a ci.yml for the standalone-core workspace layout', () => {
         const target = scaffold()
         const yml = readFileSync(join(target, '.github/workflows/ci.yml'), 'utf8')
-        expect(yml).toContain('path: my-feature')
-        expect(yml).toContain('APP_REPO: tinycld/tinycld')
-        // CORE_REPO is gone — core ships inside the app shell now.
+        // PACKAGE env carries the slug; the member slot is ws/<slug>.
+        expect(yml).toContain('PACKAGE: my-feature')
+        // The workspace meta-repo is the job root, app + core come from bootstrap --tooling.
+        expect(yml).toContain('repository: tinycld/workspace')
+        expect(yml).toContain('npx @tinycld/bootstrap@latest --tooling')
+        // Checks/e2e run scoped to this member via tinycld-pkg.
+        expect(yml).toContain('npx tinycld-pkg check')
+        expect(yml).toContain('npx tinycld-pkg test:e2e')
+        // Old-layout wiring is gone — no app-shell clone, no packages:link, no CORE_REPO.
+        expect(yml).not.toContain('packages:link')
         expect(yml).not.toContain('CORE_REPO')
-        expect(yml).toContain('packages:link ../my-feature')
+        expect(yml).not.toContain('APP_REPO')
         // Substituted; no PKG_* placeholders left over (CI uses ${{ env.X }}
-        // and ${{ hashFiles(...) }} which are GH Actions, not our tokens).
+        // which is GH Actions, not our tokens).
         expect(yml).not.toMatch(/\{\{PKG_[A-Z_]+\}\}/)
     })
 
@@ -128,6 +160,16 @@ describe('copyTemplate — full preset', () => {
         expect(m).toContain("script: 'seed'")
     })
 
+    it('server go.mod replaces core with the sibling member path', () => {
+        const target = scaffold()
+        const goMod = readFileSync(join(target, 'server/go.mod'), 'utf8')
+        // Core is a standalone sibling: from <pkg>/server/ that's ../../core/server.
+        expect(goMod).toContain('replace tinycld.org/core => ../../core/server')
+        // The old bundled-core path is gone.
+        expect(goMod).not.toContain('packages/@tinycld/core')
+        expect(goMod).toContain('module tinycld.org/packages/my-feature')
+    })
+
     it('package.json exports point at nested paths', () => {
         const target = scaffold()
         const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
@@ -139,13 +181,17 @@ describe('copyTemplate — full preset', () => {
     it('tsconfig.json declares the new path aliases', () => {
         const target = scaffold()
         const ts = JSON.parse(readFileSync(join(target, 'tsconfig.json'), 'utf8'))
-        expect(ts.extends).toBe('../tinycld/tsconfig.json')
-        // Core's source is bundled at tinycld/packages/@tinycld/core/{lib,components,...}/.
-        expect(ts.compilerOptions.paths['@tinycld/core/*']).toEqual(['../tinycld/packages/@tinycld/core/*'])
-        expect(ts.compilerOptions.paths['@tinycld/app-generated/*']).toEqual(['../tinycld/lib/generated/*'])
+        // Extends the app shell's package tsconfig base (noEmit etc. inherited).
+        expect(ts.extends).toBe('../app/tsconfig.package-base.json')
+        // Core is a standalone sibling member at ../core/.
+        expect(ts.compilerOptions.paths['@tinycld/core/*']).toEqual(['../core/*'])
+        expect(ts.compilerOptions.paths['@tinycld/app-generated/*']).toEqual(['../app/lib/generated/*'])
         // Cross-sibling imports aren't supported — no @tinycld/* alias.
         expect(ts.compilerOptions.paths['@tinycld/*']).toBeUndefined()
         expect(ts.compilerOptions.paths['~/tinycld/my-feature/*']).toEqual(['./tinycld/my-feature/*'])
+        // Old-layout artifacts are gone.
+        expect(ts.compilerOptions.paths['~/*']).toBeUndefined()
+        expect(ts.compilerOptions.rootDir).toBeUndefined()
     })
 
     it('sibling source files import from @tinycld/core, not ~/', () => {
@@ -180,6 +226,8 @@ describe('copyTemplate — settings-only preset', () => {
             'tinycld/my-feature/settings/main.tsx',
             'tests/manifest.test.ts',
             '.github/workflows/ci.yml',
+            // The vitest config ships from shared/ for every preset.
+            'vitest.config.ts',
         ]
         for (const p of shouldExist) {
             expect(existsSync(join(target, p)), `missing ${p}`).toBe(true)
@@ -195,6 +243,9 @@ describe('copyTemplate — settings-only preset', () => {
             'tinycld/my-feature/sidebar.tsx',
             'tinycld/my-feature/provider.tsx',
             'tinycld/my-feature/collections.ts',
+            // settings-only has no e2e specs — the playwright config ships
+            // only with the full preset.
+            'playwright.config.ts',
             // Biome lives only in the app shell — siblings never ship
             // their own biome.json (see tinycld/CLAUDE.md).
             'biome.json',
@@ -211,5 +262,16 @@ describe('copyTemplate — settings-only preset', () => {
         expect(manifest).not.toContain('server:')
         expect(manifest).toContain('settings: [')
         expect(manifest).toContain("component: 'settings/main'")
+    })
+
+    it('package.json has tinycld-pkg scripts but no e2e', () => {
+        const target = scaffold(base)
+        const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
+        expect(pkg.scripts.typecheck).toBe('tinycld-pkg typecheck')
+        expect(pkg.scripts.test).toBe('tinycld-pkg test')
+        expect(pkg.scripts.check).toBe('tinycld-pkg check')
+        // No playwright config ships with settings-only, so no e2e script.
+        expect(pkg.scripts['test:e2e']).toBeUndefined()
+        expect(pkg.devDependencies['@tinycld/package-scripts']).toBe('*')
     })
 })
