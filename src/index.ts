@@ -3,10 +3,23 @@ import { dirname, relative } from 'node:path'
 import { intro, outro } from '@clack/prompts'
 import pc from 'picocolors'
 import { ArgParseError, parseArgs } from './args.ts'
+import { type BootstrapToolingOptions, bootstrapTooling } from './bootstrap-tooling.ts'
 import { copyTemplate, resolveTemplatesRoot } from './copy-template.ts'
 import { detectLayout } from './layout.ts'
 import { offerLinkPackage } from './link-package.ts'
 import { runPrompts } from './prompts.ts'
+
+export function runToolingMode(opts: BootstrapToolingOptions): void {
+    const root = opts.root ?? process.cwd()
+    const present = bootstrapTooling({ ...opts, root })
+    // Mandatory members must clone — a missing app/core means a broken workspace.
+    for (const required of ['app', 'core']) {
+        if (!present.includes(required)) {
+            throw new Error(`Failed to clone required member '${required}'. Check network/auth and retry.`)
+        }
+    }
+    console.log(`Workspace skeleton ready at ${root} (members: ${present.join(', ')})`)
+}
 
 async function main(): Promise<void> {
     intro(pc.bold(pc.cyan('@tinycld/bootstrap')))
@@ -23,6 +36,18 @@ async function main(): Promise<void> {
             process.exit(2)
         }
         throw err
+    }
+
+    if (args.tooling) {
+        runToolingMode({ root: process.cwd(), members: args.with })
+        outro(
+            pc.green(
+                `Tooling-only workspace assembled (app + core${
+                    args.with?.length ? `, ${args.with.join(', ')}` : ''
+                }). Run \`npm install\` at the root.`
+            )
+        )
+        return
     }
 
     const answers = await runPrompts(args)
