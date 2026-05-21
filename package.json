@@ -1,12 +1,12 @@
 {
     "name": "@tinycld/bootstrap",
-    "version": "0.0.4",
+    "version": "1.0.0",
     "description": "Scaffolder for @tinycld feature packages",
     "type": "module",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/tinycld/create-package.git"
+        "url": "git+https://github.com/tinycld/bootstrap.git"
     },
     "bin": {
         "bootstrap": "./dist/index.js"
