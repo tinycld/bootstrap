@@ -26,4 +26,12 @@ describe('runToolingMode', () => {
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
         expect(pkg.workspaces).toContain('package-scripts')
     })
+
+    it('throws if a required member (app/core) fails to clone', () => {
+        dir = mkdtempSync(join(tmpdir(), 'tool-'))
+        // clone succeeds only for core → app is missing → guard must throw
+        expect(() => runToolingMode({ root: dir, clone: (_url, dest) => dest.endsWith('/core') })).toThrow(
+            /required member 'app'/
+        )
+    })
 })

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs'
 import { dirname, relative } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { intro, outro } from '@clack/prompts'
 import pc from 'picocolors'
 import { ArgParseError, parseArgs } from './args.ts'
@@ -141,7 +143,19 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     console.log(lines.join('\n'))
 }
 
-main().catch((err) => {
-    console.error(pc.red('Error:'), err?.message ?? err)
-    process.exit(1)
-})
+function isEntrypoint(): boolean {
+    const argv1 = process.argv[1]
+    if (!argv1) return false
+    try {
+        return import.meta.url === pathToFileURL(realpathSync(argv1)).href
+    } catch {
+        return false
+    }
+}
+
+if (isEntrypoint()) {
+    main().catch((err) => {
+        console.error(pc.red('Error:'), err?.message ?? err)
+        process.exit(1)
+    })
+}
