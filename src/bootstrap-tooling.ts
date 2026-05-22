@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { looksLikeWorkspaceRoot } from './layout.ts'
@@ -17,24 +17,57 @@ const ALWAYS_CLONE = ['app', 'core'] as const
 const ALL_MEMBERS = ['app', 'core', 'package-scripts', ...ALL_FEATURES] as const
 
 /**
- * Write a workspace-root package.json + .npmrc into `dir`. The workspaces array
- * ALWAYS lists every possible member — npm ignores entries whose dirs are
- * absent, so a partial checkout (app+core+one feature) installs fine, and
- * cloning more features later needs no manifest edit.
+ * Write (or merge into) a workspace-root package.json + .npmrc in `dir`.
+ *
+ * When `dir/package.json` already exists (e.g. provided by the workspace clone),
+ * we preserve its fields and only enforce the two things bootstrap owns:
+ * the complete `workspaces` list (so later --with clones need no manifest edit)
+ * and the `postinstall` script. All other fields — devDependencies, engines,
+ * volta, extra scripts, etc. — survive as-is.
+ *
+ * When no package.json exists yet (workspace clone was skipped), the full
+ * generated defaults are written, matching the previous behaviour.
+ *
+ * The workspaces array ALWAYS lists every possible member — npm ignores entries
+ * whose dirs are absent, so a partial checkout installs fine.
+ *
+ * .npmrc is written only when one does not already exist, for the same reason.
  */
 export function writeWorkspaceManifest(dir: string): void {
+    const pkgPath = join(dir, 'package.json')
+    let existing: Record<string, unknown> = {}
+    if (existsSync(pkgPath)) {
+        try {
+            existing = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+        } catch {
+            // Unparseable existing file — start from defaults
+        }
+    }
+
+    const existingScripts =
+        typeof existing.scripts === 'object' && existing.scripts !== null
+            ? (existing.scripts as Record<string, string>)
+            : {}
+
     const pkg = {
         name: '@tinycld/workspace',
         version: '0.0.0',
         private: true,
         type: 'module',
+        ...existing,
+        // Always enforce the canonical workspaces list and postinstall script.
         workspaces: [...ALL_MEMBERS],
         scripts: {
+            ...existingScripts,
             postinstall: 'cd app && npm run packages:generate && npm run assets:copy-pdfjs',
         },
     }
-    writeFileSync(join(dir, 'package.json'), `${JSON.stringify(pkg, null, 4)}\n`)
-    writeFileSync(join(dir, '.npmrc'), 'legacy-peer-deps=true\n')
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`)
+
+    const npmrcPath = join(dir, '.npmrc')
+    if (!existsSync(npmrcPath)) {
+        writeFileSync(npmrcPath, 'legacy-peer-deps=true\n')
+    }
 }
 
 export interface BootstrapToolingOptions {
@@ -120,8 +153,9 @@ export function bootstrapTooling(opts: BootstrapToolingOptions): string[] {
         }
     }
 
-    // Write (or overwrite) the canonical workspace manifest. This is harmless
-    // on re-runs and covers the case where the workspace clone was skipped.
+    // Merge the canonical workspaces list + postinstall into any existing
+    // package.json (provided by the workspace clone), or write defaults when
+    // no file exists yet (workspace clone was skipped or failed).
     writeWorkspaceManifest(opts.root)
 
     const toClone = Array.from(new Set([...ALWAYS_CLONE, ...requested]))

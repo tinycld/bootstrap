@@ -59,6 +59,68 @@ describe('writeWorkspaceManifest', () => {
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
         expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
     })
+
+    it('merges into an existing package.json — extra fields survive, workspaces + postinstall always correct', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const existing = {
+            name: '@tinycld/workspace',
+            version: '1.2.3',
+            private: true,
+            type: 'module',
+            devDependencies: { typescript: '^5.0.0' },
+            engines: { node: '>=20' },
+            scripts: { prepare: 'echo hi', postinstall: 'old-postinstall' },
+            workspaces: ['app', 'core'],
+        }
+        writeFileSync(join(dir, 'package.json'), JSON.stringify(existing))
+        writeWorkspaceManifest(dir)
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        // Extra fields survive
+        expect(pkg.devDependencies).toEqual({ typescript: '^5.0.0' })
+        expect(pkg.engines).toEqual({ node: '>=20' })
+        // Extra script survives
+        expect(pkg.scripts.prepare).toBe('echo hi')
+        // postinstall is always enforced to the canonical value
+        expect(pkg.scripts.postinstall).toBe('cd app && npm run packages:generate && npm run assets:copy-pdfjs')
+        // workspaces is always the full canonical list
+        for (const m of [
+            'app',
+            'core',
+            'package-scripts',
+            'contacts',
+            'mail',
+            'calendar',
+            'drive',
+            'calc',
+            'text',
+            'google-takeout-import',
+        ]) {
+            expect(pkg.workspaces).toContain(m)
+        }
+        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
+    })
+
+    it('writes the full generated manifest when no package.json exists yet', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        expect(pkg.name).toBe('@tinycld/workspace')
+        expect(pkg.version).toBe('0.0.0')
+        expect(pkg.scripts.postinstall).toBe('cd app && npm run packages:generate && npm run assets:copy-pdfjs')
+    })
+
+    it('does not overwrite an existing .npmrc', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeFileSync(join(dir, '.npmrc'), 'custom-setting=true\n')
+        writeWorkspaceManifest(dir)
+        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toBe('custom-setting=true\n')
+    })
+
+    it('writes the default .npmrc when none exists', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('legacy-peer-deps=true')
+    })
 })
 
 describe('bootstrapTooling (clone scope)', () => {
@@ -125,6 +187,28 @@ describe('bootstrapTooling (workspace self-init)', () => {
         writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
         const present = bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
         expect(present).not.toContain('workspace')
+    })
+
+    it("does NOT add 'workspace' to present[] when workspace clone fails, but still proceeds to write manifest + attempt app/core", () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const urls: string[] = []
+        const cloneStub = (url: string, dest: string): boolean => {
+            urls.push(url)
+            if (url.endsWith('/workspace.git')) return false
+            // app/core succeed; real git clone creates dest — stub must do the same
+            mkdirSync(dest, { recursive: true })
+            writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: url }))
+            return true
+        }
+        const present = bootstrapTooling({ root: dir, clone: cloneStub })
+        // workspace clone failed — must not appear in present[]
+        expect(present).not.toContain('workspace')
+        // bootstrapTooling must still attempt app and core
+        expect(urls.some((u) => u.endsWith('/app.git'))).toBe(true)
+        expect(urls.some((u) => u.endsWith('/core.git'))).toBe(true)
+        // app and core succeeded, so they appear in present[]
+        expect(present).toContain('app')
+        expect(present).toContain('core')
     })
 
     it('preserves pre-existing subdirs in root when cloning workspace into non-empty dir', () => {
