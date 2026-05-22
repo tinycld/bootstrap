@@ -148,6 +148,64 @@ describe('bootstrapTooling (clone scope)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         expect(() => bootstrapTooling({ root: dir, members: ['nope'], clone: () => true })).toThrow(/Unknown feature/)
     })
+
+    it('still validates the NAME part when a member carries an @ref', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        expect(() => bootstrapTooling({ root: dir, members: ['nope@v1.0.0'], clone: () => true })).toThrow(
+            /Unknown feature/
+        )
+    })
+})
+
+describe('bootstrapTooling (tag pinning)', () => {
+    // Records (url, ref) per clone so we can assert which ref each member is pinned to.
+    function makeRefStub(calls: { url: string; ref?: string }[]) {
+        return (url: string, dest: string, ref?: string): boolean => {
+            calls.push({ url, ref })
+            if (url.endsWith('/workspace.git')) {
+                writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
+            }
+            return true
+        }
+    }
+
+    it('clones a feature member at the ref given in --with name@ref', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const calls: { url: string; ref?: string }[] = []
+        bootstrapTooling({ root: dir, members: ['contacts@v1.2.3', 'mail'], clone: makeRefStub(calls) })
+        const contacts = calls.find((c) => c.url.endsWith('/contacts.git'))
+        const mail = calls.find((c) => c.url.endsWith('/mail.git'))
+        expect(contacts?.ref).toBe('v1.2.3')
+        // mail has no @ref → clones HEAD (undefined ref)
+        expect(mail?.ref).toBeUndefined()
+    })
+
+    it('pins app and core via appRef / coreRef options', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const calls: { url: string; ref?: string }[] = []
+        bootstrapTooling({ root: dir, appRef: 'v2.0.0', coreRef: 'v3.1.0', clone: makeRefStub(calls) })
+        expect(calls.find((c) => c.url.endsWith('/app.git'))?.ref).toBe('v2.0.0')
+        expect(calls.find((c) => c.url.endsWith('/core.git'))?.ref).toBe('v3.1.0')
+    })
+
+    it('dedupes a member given both bare and with @ref (clones once, pinned)', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const calls: { url: string; ref?: string }[] = []
+        bootstrapTooling({ root: dir, members: ['contacts', 'contacts@v1.2.3'], clone: makeRefStub(calls) })
+        const contactsClones = calls.filter((c) => c.url.endsWith('/contacts.git'))
+        expect(contactsClones).toHaveLength(1)
+    })
+
+    it('returns the bare member NAME (not name@ref) in present[]', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const present = bootstrapTooling({
+            root: dir,
+            members: ['contacts@v1.2.3'],
+            clone: makeRefStub([]),
+        })
+        expect(present).toContain('contacts')
+        expect(present).not.toContain('contacts@v1.2.3')
+    })
 })
 
 describe('bootstrapTooling (workspace self-init)', () => {

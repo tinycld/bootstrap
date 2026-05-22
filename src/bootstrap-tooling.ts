@@ -9,9 +9,10 @@ import { looksLikeWorkspaceRoot } from './layout.ts'
 // But --tooling CLONES only app+core+requested — we do NOT force-clone all.
 const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', 'google-takeout-import'] as const
 
-// Always cloned by tooling mode (the minimum viable workspace). package-scripts
-// ships inside the workspace meta-repo itself, so it is never cloned.
-const ALWAYS_CLONE = ['app', 'core'] as const
+// app + core are always cloned by tooling mode (the minimum viable workspace);
+// the clone set in bootstrapTooling seeds them directly (pinnable via
+// appRef/coreRef). package-scripts ships inside the workspace meta-repo itself,
+// so it is never cloned.
 
 // Listed in the manifest workspaces array (everything that could exist).
 const ALL_MEMBERS = ['app', 'core', 'package-scripts', ...ALL_FEATURES] as const
@@ -75,17 +76,33 @@ export interface BootstrapToolingOptions {
     root: string
     /**
      * Feature members to clone IN ADDITION to app+core. Defaults to NONE — the
-     * whole point is a minimal checkout. Pass slugs via --with on the CLI.
+     * whole point is a minimal checkout. Pass slugs via --with on the CLI. Each
+     * entry may carry a pinned ref as `<name>@<ref>` (e.g. `contacts@v1.2.3`) to
+     * clone that exact tag/branch instead of the default HEAD of main.
      */
     members?: readonly string[]
     /** git base, e.g. git@github.com:tinycld. */
     repoBase?: string
-    /** Injected for tests; defaults to real git clone. */
-    clone?: (url: string, dest: string) => boolean
+    /** Pin the always-cloned `app` member to this ref (tag/branch). Default HEAD. */
+    appRef?: string
+    /** Pin the always-cloned `core` member to this ref (tag/branch). Default HEAD. */
+    coreRef?: string
+    /** Injected for tests; defaults to real git clone. `ref` pins the checkout. */
+    clone?: (url: string, dest: string, ref?: string) => boolean
 }
 
-function realClone(url: string, dest: string): boolean {
-    const r = spawnSync('git', ['clone', '--depth', '1', url, dest], { stdio: 'inherit' })
+/** Split a member spec `name@ref` into its parts. No `@` → no ref (clone HEAD). */
+function splitRef(spec: string): { name: string; ref?: string } {
+    const at = spec.indexOf('@')
+    if (at === -1) return { name: spec }
+    return { name: spec.slice(0, at), ref: spec.slice(at + 1) || undefined }
+}
+
+function realClone(url: string, dest: string, ref?: string): boolean {
+    const args = ['clone', '--depth', '1']
+    if (ref) args.push('--branch', ref)
+    args.push(url, dest)
+    const r = spawnSync('git', args, { stdio: 'inherit' })
     return r.status === 0
 }
 
@@ -103,7 +120,11 @@ function realClone(url: string, dest: string): boolean {
  * move logic will simply move nothing from an empty temp dir (which is fine
  * for unit tests). Real runs move the full repo contents.
  */
-function cloneWorkspaceIntoRoot(url: string, root: string, cloneFn: (url: string, dest: string) => boolean): boolean {
+function cloneWorkspaceIntoRoot(
+    url: string,
+    root: string,
+    cloneFn: (url: string, dest: string, ref?: string) => boolean
+): boolean {
     const tempDir = mkdtempSync(join(tmpdir(), 'tinycld-workspace-'))
     try {
         if (!cloneFn(url, tempDir)) return false
@@ -133,10 +154,13 @@ function cloneWorkspaceIntoRoot(url: string, root: string, cloneFn: (url: string
  * clean `npm ci`).
  */
 export function bootstrapTooling(opts: BootstrapToolingOptions): string[] {
-    const requested = opts.members ?? []
-    const unknown = requested.filter((m) => !ALL_FEATURES.includes(m as (typeof ALL_FEATURES)[number]))
+    // Each requested member may be `name` or `name@ref`. Validate the NAME part.
+    const requested = (opts.members ?? []).map(splitRef)
+    const unknown = requested.filter((m) => !ALL_FEATURES.includes(m.name as (typeof ALL_FEATURES)[number]))
     if (unknown.length > 0) {
-        throw new Error(`Unknown feature member(s): ${unknown.join(', ')}. Known: ${ALL_FEATURES.join(', ')}`)
+        throw new Error(
+            `Unknown feature member(s): ${unknown.map((m) => m.name).join(', ')}. Known: ${ALL_FEATURES.join(', ')}`
+        )
     }
     const repoBase = opts.repoBase ?? 'git@github.com:tinycld'
     const clone = opts.clone ?? realClone
@@ -158,14 +182,25 @@ export function bootstrapTooling(opts: BootstrapToolingOptions): string[] {
     // no file exists yet (workspace clone was skipped or failed).
     writeWorkspaceManifest(opts.root)
 
-    const toClone = Array.from(new Set([...ALWAYS_CLONE, ...requested]))
-    for (const m of toClone) {
-        const dest = join(opts.root, m)
+    // Build the clone set keyed by member NAME so a member passed both bare and
+    // with an @ref dedupes to one clone (the ref-bearing entry wins). app+core
+    // are always cloned and pinnable via appRef/coreRef.
+    const refByName = new Map<string, string | undefined>()
+    refByName.set('app', opts.appRef)
+    refByName.set('core', opts.coreRef)
+    for (const { name, ref } of requested) {
+        // A later ref overrides an earlier bare entry; a bare entry never clears
+        // an existing ref.
+        if (ref !== undefined || !refByName.has(name)) refByName.set(name, ref)
+    }
+
+    for (const [name, ref] of refByName) {
+        const dest = join(opts.root, name)
         if (existsSync(join(dest, '.git')) || existsSync(join(dest, 'package.json'))) {
-            present.push(m)
+            present.push(name)
             continue
         }
-        if (clone(`${repoBase}/${m}.git`, dest)) present.push(m)
+        if (clone(`${repoBase}/${name}.git`, dest, ref)) present.push(name)
     }
     return present
 }

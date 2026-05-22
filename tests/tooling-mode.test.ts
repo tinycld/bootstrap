@@ -58,6 +58,27 @@ describe('runToolingMode', () => {
         ).toThrow(/required member 'app'/)
     })
 
+    it('peels app@ref / core@ref out of --with into pinned clones, keeps feature pins', () => {
+        dir = mkdtempSync(join(tmpdir(), 'tool-'))
+        const calls: { url: string; ref?: string }[] = []
+        const refStub = (url: string, dest: string, ref?: string): boolean => {
+            calls.push({ url, ref })
+            if (url.endsWith('/workspace.git')) {
+                writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
+            }
+            return true
+        }
+        runToolingMode({
+            root: dir,
+            members: ['app@v1.0.0', 'core@v2.0.0', 'mail@v3.0.0', 'contacts'],
+            clone: refStub,
+        })
+        expect(calls.find((c) => c.url.endsWith('/app.git'))?.ref).toBe('v1.0.0')
+        expect(calls.find((c) => c.url.endsWith('/core.git'))?.ref).toBe('v2.0.0')
+        expect(calls.find((c) => c.url.endsWith('/mail.git'))?.ref).toBe('v3.0.0')
+        expect(calls.find((c) => c.url.endsWith('/contacts.git'))?.ref).toBeUndefined()
+    })
+
     it('uses TINYCLD_REPO_BASE from the environment for clone URLs', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         const urls: string[] = []

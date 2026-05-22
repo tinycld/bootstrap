@@ -13,12 +13,31 @@ import { runPrompts } from './prompts.ts'
 
 export function runToolingMode(opts: BootstrapToolingOptions): void {
     const root = opts.root ?? process.cwd()
+    // app + core are always-cloned members, not features, so they can't ride the
+    // `members` list through bootstrapTooling's feature validation. Accept them
+    // in the SAME `--with name@ref` surface for a uniform pinned invocation
+    // (`--with app@v1 --with core@v2 --with mail@v3`) by peeling app@ref/core@ref
+    // out of `members` into appRef/coreRef. An explicit opts.appRef/coreRef wins.
+    let appRef = opts.appRef
+    let coreRef = opts.coreRef
+    const features: string[] = []
+    for (const spec of opts.members ?? []) {
+        const at = spec.indexOf('@')
+        const name = at === -1 ? spec : spec.slice(0, at)
+        const ref = at === -1 ? undefined : spec.slice(at + 1) || undefined
+        if (name === 'app') appRef = appRef ?? ref
+        else if (name === 'core') coreRef = coreRef ?? ref
+        else features.push(spec)
+    }
     // Honor TINYCLD_REPO_BASE (CI sets it to an HTTPS base since runners have no
     // SSH key). Listed first so an explicit opts.repoBase still wins via spread;
     // when neither is set, bootstrapTooling falls back to its SSH default.
     const present = bootstrapTooling({
         repoBase: process.env.TINYCLD_REPO_BASE,
         ...opts,
+        members: features,
+        appRef,
+        coreRef,
         root,
     })
     // Mandatory members must clone — a missing app/core means a broken workspace.
