@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -174,6 +174,30 @@ describe('bootstrapTooling (clone scope)', () => {
         expect(() => bootstrapTooling({ root: dir, members: ['nope@v1.0.0'], clone: () => true })).toThrow(
             /Unknown feature/
         )
+    })
+
+    // The app-anchored CI/release flow checks out app into ws/app BEFORE running
+    // bootstrap, so the workspace root already contains the app member. bootstrap
+    // must NOT re-clone it (that would clobber the pinned checkout) but must still
+    // record it present and clone everything else around it.
+    it('skips re-cloning a member already checked out at the root (e.g. CI app pre-checkout)', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        // Simulate the CI checkout: ws/app already present with a package.json.
+        mkdirSync(join(dir, 'app'))
+        writeFileSync(join(dir, 'app', 'package.json'), JSON.stringify({ name: 'app', version: 'pinned' }))
+        const urls: string[] = []
+        const present = bootstrapTooling({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
+        const cloned = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
+        // app is NOT re-cloned...
+        expect(cloned).not.toContain('app')
+        // ...but core + the requested feature are.
+        expect(cloned).toEqual(['core', 'mail'])
+        // app is still recorded present alongside the freshly cloned members.
+        expect(present).toContain('app')
+        expect(present).toContain('core')
+        expect(present).toContain('mail')
+        // The pre-checkout's package.json is untouched (not overwritten by a clone).
+        expect(JSON.parse(readFileSync(join(dir, 'app', 'package.json'), 'utf-8')).version).toBe('pinned')
     })
 })
 
