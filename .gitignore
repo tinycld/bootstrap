@@ -4,6 +4,8 @@ dist/
 .DS_Store
 coverage/
 .vitest/
+# Playwright test output (traces, screenshots, videos).
+test-results/
 # Per-developer Claude Code workspace (session worktrees, scratch files).
 .claude/
 
