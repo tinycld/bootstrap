@@ -46,14 +46,15 @@ export function ensureMember(workspaceDir: string, slug: string): void {
  * symlink and the root `postinstall` runs the generator.
  *
  * Two shapes, distinguished by whether `workspaceDir` is already a workspace root:
- *   - attach: `workspaceDir` already holds the workspace meta-repo (its
+ *   - attach: `workspaceDir` is already an assembled workspace root (its
  *     package.json name is `@tinycld/workspace`). No assembly — just ensure the
  *     member and install. The existing root package.json is left untouched.
  *   - bootstrap: `workspaceDir` is a fresh wrapper that only contains the
- *     scaffolded `<slug>/` so far. Assemble the workspace *around* it — write the
- *     workspace manifest and clone app + core via `bootstrapTooling` — then
- *     ensure the new member and install. The `postinstall` (`cd app && …`) only
- *     succeeds once `app/` exists, which is why we assemble before installing.
+ *     scaffolded `<slug>/` so far. Assemble the workspace *around* it —
+ *     `bootstrapTooling` generates the root scaffolding and clones app + core
+ *     (no workspace meta-repo) — then ensure the new member and install. The
+ *     `postinstall` (`cd app && …`) only succeeds once `app/` exists, which is
+ *     why we assemble before installing.
  *
  * Returns true if the user chose to link (even if a subprocess failed — the
  * error is already logged, and we don't want to follow up with manual steps
@@ -74,7 +75,7 @@ export async function offerLinkPackage({
 
     if (mode === 'prompt') {
         const message = needsClone
-            ? `Clone the tinycld workspace (app + core) and link ${pc.bold(slug)} now?`
+            ? `Assemble the tinycld workspace (app + core) and link ${pc.bold(slug)} now?`
             : `Link ${pc.bold(slug)} into the workspace now?`
         const answer = await confirm({ message, initialValue: true })
         if (isCancel(answer) || answer !== true) return false
