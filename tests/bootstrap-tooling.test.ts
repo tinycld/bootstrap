@@ -117,15 +117,29 @@ describe('writeWorkspaceManifest', () => {
 })
 
 describe('copyWorkspaceTemplate', () => {
-    it('lays down the root scaffolding from the real templates/workspace dir', () => {
+    it('lays down the complete root scaffolding from the real templates/workspace dir', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const written = copyWorkspaceTemplate(dir)
-        // Real template files exist on disk under bootstrap/templates/workspace.
-        expect(existsSync(join(dir, 'tinycld.packages.ts'))).toBe(true)
-        expect(existsSync(join(dir, 'vitest.config.ts'))).toBe(true)
-        expect(existsSync(join(dir, 'tests', 'unit-setup.ts'))).toBe(true)
-        expect(written).toContain('tinycld.packages.ts')
-        expect(written).toContain(join('tests', 'unit-setup.ts'))
+        // Every file the workspace root needs, including the version dotfiles
+        // (CI reads ws/.node-version + ws/.go-version) and all tests/ stubs.
+        // readdirSync includes dotfiles, so they must come through.
+        const expected = [
+            '.node-version',
+            '.go-version',
+            'tinycld.packages.ts',
+            'vitest.config.ts',
+            join('tests', 'expo-clipboard-stub.ts'),
+            join('tests', 'expo-router-stub.ts'),
+            join('tests', 'lucide-react-native-stub.cjs'),
+            join('tests', 'tinycld.packages.test.ts'),
+            join('tests', 'unit-setup.ts'),
+        ]
+        for (const rel of expected) {
+            expect(existsSync(join(dir, rel)), `${rel} on disk`).toBe(true)
+            expect(written, `${rel} reported written`).toContain(rel)
+        }
+        // No silent extras/drops: the written set is exactly the template set.
+        expect(written.sort()).toEqual([...expected].sort())
     })
 
     it('never overwrites an existing file', () => {
