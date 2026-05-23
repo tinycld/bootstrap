@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,16 +9,10 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
-/**
- * Clone stub that writes a @tinycld/workspace package.json when the URL ends
- * with /workspace.git so the workspace-root guard passes on subsequent checks.
- */
+/** Clone stub that records the cloned URLs and reports success. */
 function makeCloneStub(recorded: string[]) {
-    return (url: string, dest: string): boolean => {
+    return (url: string, _dest: string): boolean => {
         recorded.push(url)
-        if (url.endsWith('/workspace.git')) {
-            writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-        }
         return true
     }
 }
@@ -33,11 +27,12 @@ describe('runToolingMode', () => {
             clone: makeCloneStub(urls),
         })
         expect(existsSync(join(dir, 'package.json'))).toBe(true)
-        // workspace is cloned first, then app + core + requested feature
+        // No workspace meta-repo clone: root manifest is generated, then
+        // app + core + the requested feature clone.
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toEqual(['workspace', 'app', 'core', 'contacts'])
+        expect(memberNames).toEqual(['app', 'core', 'contacts'])
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.workspaces).toContain('package-scripts')
+        expect(pkg.workspaces).toContain('app/package-scripts')
     })
 
     it('throws if a required member (app/core) fails to clone', () => {
@@ -46,14 +41,7 @@ describe('runToolingMode', () => {
         expect(() =>
             runToolingMode({
                 root: dir,
-                clone: (url, dest) => {
-                    // Let workspace clone succeed (write its package.json so guard passes)
-                    if (url.endsWith('/workspace.git')) {
-                        writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-                        return true
-                    }
-                    return dest.endsWith('/core')
-                },
+                clone: (_url, dest) => dest.endsWith('/core'),
             })
         ).toThrow(/required member 'app'/)
     })
@@ -61,11 +49,8 @@ describe('runToolingMode', () => {
     it('peels app@ref / core@ref out of --with into pinned clones, keeps feature pins', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         const calls: { url: string; ref?: string }[] = []
-        const refStub = (url: string, dest: string, ref?: string): boolean => {
+        const refStub = (url: string, _dest: string, ref?: string): boolean => {
             calls.push({ url, ref })
-            if (url.endsWith('/workspace.git')) {
-                writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-            }
             return true
         }
         runToolingMode({
@@ -93,11 +78,8 @@ describe('runToolingMode', () => {
             if (prev === undefined) delete process.env.TINYCLD_REPO_BASE
             else process.env.TINYCLD_REPO_BASE = prev
         }
-        // workspace + app + core cloned via the HTTPS base from the env var, not the SSH default
-        expect(urls).toEqual([
-            'https://github.com/tinycld/workspace.git',
-            'https://github.com/tinycld/app.git',
-            'https://github.com/tinycld/core.git',
-        ])
+        // app + core cloned via the HTTPS base from the env var, not the SSH default
+        // (no workspace meta-repo clone)
+        expect(urls).toEqual(['https://github.com/tinycld/app.git', 'https://github.com/tinycld/core.git'])
     })
 })

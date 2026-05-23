@@ -1,8 +1,7 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { looksLikeWorkspaceRoot } from './layout.ts'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // All feature members that exist in the ecosystem. The workspace manifest lists
 // ALL of them (npm tolerates absent dirs), so a partial checkout still installs.
@@ -11,11 +10,13 @@ const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', '
 
 // app + core are always cloned by tooling mode (the minimum viable workspace);
 // the clone set in bootstrapTooling seeds them directly (pinnable via
-// appRef/coreRef). package-scripts ships inside the workspace meta-repo itself,
-// so it is never cloned.
+// appRef/coreRef). package-scripts (the tinycld-pkg CLI) now lives INSIDE the
+// app member at app/package-scripts, so it arrives with the app clone and is
+// never cloned separately.
 
-// Listed in the manifest workspaces array (everything that could exist).
-const ALL_MEMBERS = ['app', 'core', 'package-scripts', ...ALL_FEATURES] as const
+// Listed in the manifest workspaces array (everything that could exist). The
+// nested member path app/package-scripts is a valid npm workspace entry.
+const ALL_MEMBERS = ['app', 'app/package-scripts', 'core', ...ALL_FEATURES] as const
 
 /**
  * Write (or merge into) a workspace-root package.json + .npmrc in `dir`.
@@ -71,6 +72,48 @@ export function writeWorkspaceManifest(dir: string): void {
     }
 }
 
+/**
+ * Resolve the workspace-template dir relative to this module. Published builds
+ * have `dist/bootstrap-tooling.js` next to `templates/`; dev has
+ * `src/bootstrap-tooling.ts` under the same parent. Both → `../templates/workspace`.
+ */
+function resolveWorkspaceTemplateDir(): string {
+    const here = dirname(fileURLToPath(import.meta.url))
+    return join(here, '..', 'templates', 'workspace')
+}
+
+/**
+ * Copy the workspace-root scaffolding (tinycld.packages.ts, vitest.config.ts,
+ * tests/ stubs) from bootstrap's templates/workspace/ into `dir`. These files
+ * are pure scaffolding the workspace ROOT needs but that no longer lives in a
+ * committed workspace repo — bootstrap is their source of truth.
+ *
+ * Never overwrites an existing file: a real workspace checkout, or a CI lane
+ * that supplied its own copy, keeps what it has (same non-destructive ethos as
+ * the member clones). Returns the relative paths actually written.
+ */
+export function copyWorkspaceTemplate(dir: string, templateDir = resolveWorkspaceTemplateDir()): string[] {
+    if (!existsSync(templateDir)) return []
+    const written: string[] = []
+    const walk = (src: string): void => {
+        for (const entry of readdirSync(src)) {
+            const srcPath = join(src, entry)
+            const rel = relative(templateDir, srcPath)
+            const dstPath = join(dir, rel)
+            if (statSync(srcPath).isDirectory()) {
+                walk(srcPath)
+                continue
+            }
+            if (existsSync(dstPath)) continue // never overwrite
+            mkdirSync(dirname(dstPath), { recursive: true })
+            cpSync(srcPath, dstPath)
+            written.push(rel)
+        }
+    }
+    walk(templateDir)
+    return written
+}
+
 export interface BootstrapToolingOptions {
     /** Directory to assemble the workspace in (becomes the workspace root). */
     root: string
@@ -107,48 +150,12 @@ function realClone(url: string, dest: string, ref?: string): boolean {
 }
 
 /**
- * Clone the workspace meta-repo into `root`, tolerating a non-empty target.
- *
- * A plain `git clone <url> <root>` fails when `root` already contains files
- * (e.g. the link-package flow pre-creates a `<slug>/` subdir there). We
- * clone into a fresh sibling temp dir, then move each top-level entry into
- * `root`, skipping any that already exist. The `.git` dir is moved too unless
- * `root/.git` already exists.
- *
- * The `cloneFn` primitive is the same injected-or-real clone used for app/core —
- * tests inject a stub that records URLs but does not create files, so the
- * move logic will simply move nothing from an empty temp dir (which is fine
- * for unit tests). Real runs move the full repo contents.
- */
-function cloneWorkspaceIntoRoot(
-    url: string,
-    root: string,
-    cloneFn: (url: string, dest: string, ref?: string) => boolean
-): boolean {
-    const tempDir = mkdtempSync(join(tmpdir(), 'tinycld-workspace-'))
-    try {
-        if (!cloneFn(url, tempDir)) return false
-        const rootHasGit = existsSync(join(root, '.git'))
-        for (const entry of readdirSync(tempDir)) {
-            // Skip .git if root already has one
-            if (entry === '.git' && rootHasGit) continue
-            const src = join(tempDir, entry)
-            const dest = join(root, entry)
-            // Never overwrite an entry that already exists in root
-            if (existsSync(dest)) continue
-            renameSync(src, dest)
-        }
-        return true
-    } finally {
-        rmSync(tempDir, { recursive: true, force: true })
-    }
-}
-
-/**
- * Assemble a workspace skeleton at opts.root: if root is not yet a workspace,
- * clone the workspace meta-repo into it first (self-init), then write the full
- * manifest, then clone ONLY app + core + the explicitly-requested feature
- * members (skipping any already present — e.g. a CI-checked-out member).
+ * Assemble a workspace skeleton at opts.root: write the canonical root manifest
+ * (writeWorkspaceManifest) + lay down the root scaffolding (copyWorkspaceTemplate:
+ * tinycld.packages.ts, vitest.config.ts, tests/ stubs, version files), then clone
+ * ONLY app + core + the explicitly-requested feature members (skipping any
+ * already present — e.g. a CI-checked-out member). There is NO workspace
+ * meta-repo clone: bootstrap is the source of all root scaffolding.
  * Unknown member names throw. Returns the members that ended up present. Does
  * NOT run npm install (the caller / CI controls that, since it may want a
  * clean `npm ci`).
@@ -167,20 +174,13 @@ export function bootstrapTooling(opts: BootstrapToolingOptions): string[] {
 
     const present: string[] = []
 
-    // Self-init: clone the workspace meta-repo into root if it isn't already
-    // a workspace root. This provides package-scripts/, tinycld.packages.ts,
-    // tests/, .node-version, .go-version, .npmrc, and the canonical root
-    // package.json before anything else runs.
-    if (!looksLikeWorkspaceRoot(opts.root)) {
-        if (cloneWorkspaceIntoRoot(`${repoBase}/workspace.git`, opts.root, clone)) {
-            present.push('workspace')
-        }
-    }
-
-    // Merge the canonical workspaces list + postinstall into any existing
-    // package.json (provided by the workspace clone), or write defaults when
-    // no file exists yet (workspace clone was skipped or failed).
+    // Write the canonical root manifest (workspaces list + postinstall), then
+    // lay down the root scaffolding bootstrap owns (tinycld.packages.ts,
+    // vitest.config.ts, tests/ stubs, .node-version, .go-version). Both are
+    // non-destructive: anything already present (a real workspace checkout, or
+    // a CI lane that supplied its own) is left as-is.
     writeWorkspaceManifest(opts.root)
+    copyWorkspaceTemplate(opts.root)
 
     // Build the clone set keyed by member NAME so a member passed both bare and
     // with an @ref dedupes to one clone (the ref-bearing entry wins). app+core

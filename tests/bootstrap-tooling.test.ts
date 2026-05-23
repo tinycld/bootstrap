@@ -1,25 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bootstrapTooling, writeWorkspaceManifest } from '../src/bootstrap-tooling.ts'
+import { bootstrapTooling, copyWorkspaceTemplate, writeWorkspaceManifest } from '../src/bootstrap-tooling.ts'
 
 let dir: string
 afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
-/**
- * A clone stub that auto-writes a @tinycld/workspace package.json into the
- * destination when the URL ends with /workspace.git. This lets the workspace-
- * root guard see a valid root after the stub "clones" the workspace repo.
- */
+/** A clone stub that records the cloned URLs and reports success. */
 function makeCloneStub(recorded: string[]) {
-    return (url: string, dest: string): boolean => {
+    return (url: string, _dest: string): boolean => {
         recorded.push(url)
-        if (url.endsWith('/workspace.git')) {
-            writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-        }
         return true
     }
 }
@@ -29,11 +22,11 @@ describe('writeWorkspaceManifest', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        // app + core + package-scripts + every feature, regardless of what's cloned.
+        // app + app/package-scripts + core + every feature, regardless of what's cloned.
         for (const m of [
             'app',
+            'app/package-scripts',
             'core',
-            'package-scripts',
             'contacts',
             'mail',
             'calendar',
@@ -85,8 +78,8 @@ describe('writeWorkspaceManifest', () => {
         // workspaces is always the full canonical list
         for (const m of [
             'app',
+            'app/package-scripts',
             'core',
-            'package-scripts',
             'contacts',
             'mail',
             'calendar',
@@ -123,25 +116,52 @@ describe('writeWorkspaceManifest', () => {
     })
 })
 
+describe('copyWorkspaceTemplate', () => {
+    it('lays down the root scaffolding from the real templates/workspace dir', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const written = copyWorkspaceTemplate(dir)
+        // Real template files exist on disk under bootstrap/templates/workspace.
+        expect(existsSync(join(dir, 'tinycld.packages.ts'))).toBe(true)
+        expect(existsSync(join(dir, 'vitest.config.ts'))).toBe(true)
+        expect(existsSync(join(dir, 'tests', 'unit-setup.ts'))).toBe(true)
+        expect(written).toContain('tinycld.packages.ts')
+        expect(written).toContain(join('tests', 'unit-setup.ts'))
+    })
+
+    it('never overwrites an existing file', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeFileSync(join(dir, 'tinycld.packages.ts'), 'export const packages = ["custom"]')
+        const written = copyWorkspaceTemplate(dir)
+        // Pre-existing file is preserved and NOT reported as written.
+        expect(readFileSync(join(dir, 'tinycld.packages.ts'), 'utf-8')).toBe('export const packages = ["custom"]')
+        expect(written).not.toContain('tinycld.packages.ts')
+    })
+
+    it('returns [] when the template dir is absent', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        expect(copyWorkspaceTemplate(dir, join(dir, 'no-such-templates'))).toEqual([])
+    })
+})
+
 describe('bootstrapTooling (clone scope)', () => {
-    it('clones ONLY app + core by default (no features)', () => {
+    it('clones ONLY app + core by default (no features, no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
         const present = bootstrapTooling({ root: dir, clone: makeCloneStub(urls) })
-        // workspace is cloned first (self-init), then app + core
+        // No workspace clone: root scaffolding is generated, then app + core clone.
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toEqual(['workspace', 'app', 'core'])
-        expect(present).toContain('workspace')
+        expect(memberNames).toEqual(['app', 'core'])
+        expect(present).not.toContain('workspace')
         expect(present).toContain('app')
         expect(present).toContain('core')
     })
 
-    it('clones app + core + only the requested features', () => {
+    it('clones app + core + only the requested features (no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
         bootstrapTooling({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toEqual(['workspace', 'app', 'core', 'mail'])
+        expect(memberNames).toEqual(['app', 'core', 'mail'])
     })
 
     it('throws on an unknown feature member', () => {
@@ -208,95 +228,44 @@ describe('bootstrapTooling (tag pinning)', () => {
     })
 })
 
-describe('bootstrapTooling (workspace self-init)', () => {
-    it('clones workspace repo FIRST when root is not already a workspace root', () => {
+describe('bootstrapTooling (no workspace meta-repo clone)', () => {
+    it('NEVER clones a workspace meta-repo — root scaffolding is generated', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
         bootstrapTooling({ root: dir, repoBase: 'git@github.com:tinycld', clone: makeCloneStub(urls) })
-        // First cloned URL must be the workspace meta-repo
-        expect(urls[0]).toContain('/workspace.git')
-        // Must include app and core after
+        // No /workspace.git clone at all.
+        expect(urls.some((u) => u.includes('/workspace.git'))).toBe(false)
+        // app + core are still cloned.
         expect(urls).toContain('git@github.com:tinycld/app.git')
         expect(urls).toContain('git@github.com:tinycld/core.git')
     })
 
-    it('does NOT clone workspace when root is already a workspace root', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        // Pre-write a valid workspace root package.json
-        writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-        const urls: string[] = []
-        bootstrapTooling({ root: dir, clone: makeCloneStub(urls) })
-        // No workspace.git clone
-        expect(urls.some((u) => u.includes('/workspace.git'))).toBe(false)
-        // Still clones app + core
-        const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toContain('app')
-        expect(memberNames).toContain('core')
-    })
-
-    it("adds 'workspace' to returned present[] when workspace is cloned", () => {
+    it("never adds 'workspace' to present[]", () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const present = bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
-        expect(present[0]).toBe('workspace')
-    })
-
-    it("does NOT add 'workspace' to present[] when root is already a workspace root", () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-        const present = bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
         expect(present).not.toContain('workspace')
+        expect(present[0]).not.toBe('workspace')
     })
 
-    it("does NOT add 'workspace' to present[] when workspace clone fails, but still proceeds to write manifest + attempt app/core", () => {
+    it('generates the root manifest + lays down the template scaffolding', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        const urls: string[] = []
-        const cloneStub = (url: string, dest: string): boolean => {
-            urls.push(url)
-            if (url.endsWith('/workspace.git')) return false
-            // app/core succeed; real git clone creates dest — stub must do the same
-            mkdirSync(dest, { recursive: true })
-            writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: url }))
-            return true
-        }
-        const present = bootstrapTooling({ root: dir, clone: cloneStub })
-        // workspace clone failed — must not appear in present[]
-        expect(present).not.toContain('workspace')
-        // bootstrapTooling must still attempt app and core
-        expect(urls.some((u) => u.endsWith('/app.git'))).toBe(true)
-        expect(urls.some((u) => u.endsWith('/core.git'))).toBe(true)
-        // app and core succeeded, so they appear in present[]
-        expect(present).toContain('app')
-        expect(present).toContain('core')
-    })
-
-    it('preserves pre-existing subdirs in root when cloning workspace into non-empty dir', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        // Simulate the link-package bootstrap flow: root already contains a <slug>/ subdir
-        mkdirSync(join(dir, 'my-package'))
-        writeFileSync(join(dir, 'my-package', 'manifest.ts'), 'export default {}')
-
-        // Clone stub that actually writes files into dest when cloning workspace,
-        // including one that would collide with an existing root entry
-        const collisionStub = (url: string, dest: string): boolean => {
-            if (url.endsWith('/workspace.git')) {
-                // Write workspace package.json (required for root guard)
-                writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-                // Write a non-colliding new file
-                writeFileSync(join(dest, 'tinycld.packages.ts'), 'export const packages = []')
-                // Write an entry that collides with an existing subdir
-                mkdirSync(join(dest, 'my-package'))
-                writeFileSync(join(dest, 'my-package', 'intruder.ts'), 'should not overwrite')
-            }
-            return true
-        }
-
-        bootstrapTooling({ root: dir, clone: collisionStub })
-
-        // The original file inside my-package is preserved
-        expect(readFileSync(join(dir, 'my-package', 'manifest.ts'), 'utf-8')).toBe('export default {}')
-        // The new file from workspace was moved in
+        bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
+        // writeWorkspaceManifest output
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        expect(pkg.name).toBe('@tinycld/workspace')
+        expect(pkg.workspaces).toContain('app/package-scripts')
+        // copyWorkspaceTemplate output
         expect(existsSync(join(dir, 'tinycld.packages.ts'))).toBe(true)
-        // The colliding entry (my-package/) was NOT overwritten — intruder.ts absent
-        expect(existsSync(join(dir, 'my-package', 'intruder.ts'))).toBe(false)
+        expect(existsSync(join(dir, 'vitest.config.ts'))).toBe(true)
+        expect(existsSync(join(dir, 'tests', 'unit-setup.ts'))).toBe(true)
+        expect(existsSync(join(dir, '.node-version'))).toBe(true)
+        expect(existsSync(join(dir, '.go-version'))).toBe(true)
+    })
+
+    it('does not overwrite pre-existing root scaffolding (e.g. a real checkout / CI-provided file)', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeFileSync(join(dir, 'tinycld.packages.ts'), 'export const packages = ["custom"]')
+        bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
+        expect(readFileSync(join(dir, 'tinycld.packages.ts'), 'utf-8')).toBe('export const packages = ["custom"]')
     })
 })
