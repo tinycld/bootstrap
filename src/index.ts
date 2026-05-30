@@ -5,16 +5,16 @@ import { pathToFileURL } from 'node:url'
 import { intro, outro } from '@clack/prompts'
 import pc from 'picocolors'
 import { ArgParseError, parseArgs } from './args.ts'
-import { type BootstrapToolingOptions, bootstrapTooling } from './bootstrap-tooling.ts'
+import { type AssembleWorkspaceOptions, assembleWorkspace } from './assemble-workspace.ts'
 import { copyTemplate, resolveTemplatesRoot } from './copy-template.ts'
 import { detectLayout } from './layout.ts'
 import { offerLinkPackage } from './link-package.ts'
 import { runPrompts } from './prompts.ts'
 
-export function runToolingMode(opts: BootstrapToolingOptions): void {
+export function runAssembleOnly(opts: AssembleWorkspaceOptions): void {
     const root = opts.root ?? process.cwd()
     // app + core are always-cloned members, not features, so they can't ride the
-    // `members` list through bootstrapTooling's feature validation. Accept them
+    // `members` list through assembleWorkspace's feature validation. Accept them
     // in the SAME `--with name@ref` surface for a uniform pinned invocation
     // (`--with app@v1 --with core@v2 --with mail@v3`) by peeling app@ref/core@ref
     // out of `members` into appRef/coreRef. An explicit opts.appRef/coreRef wins.
@@ -31,8 +31,8 @@ export function runToolingMode(opts: BootstrapToolingOptions): void {
     }
     // Honor TINYCLD_REPO_BASE (CI sets it to an HTTPS base since runners have no
     // SSH key). Listed first so an explicit opts.repoBase still wins via spread;
-    // when neither is set, bootstrapTooling falls back to its SSH default.
-    const present = bootstrapTooling({
+    // when neither is set, assembleWorkspace falls back to its SSH default.
+    const present = assembleWorkspace({
         repoBase: process.env.TINYCLD_REPO_BASE,
         ...opts,
         members: features,
@@ -50,8 +50,9 @@ export function runToolingMode(opts: BootstrapToolingOptions): void {
 }
 
 async function main(): Promise<void> {
-    intro(pc.bold(pc.cyan('@tinycld/bootstrap')))
-
+    // Parse + mode-resolve BEFORE opening a clack session — anything that exits
+    // early (parse error, usage, mutex error) prints plainly and avoids the
+    // dangling `┌  @tinycld/bootstrap` banner with no matching footer.
     let args: ReturnType<typeof parseArgs>
     try {
         args = parseArgs(process.argv.slice(2))
@@ -72,15 +73,11 @@ async function main(): Promise<void> {
         process.exit(2)
     }
 
+    intro(pc.bold(pc.cyan('@tinycld/bootstrap')))
+
     if (mode === 'assemble-only') {
-        runToolingMode({ root: process.cwd(), members: args.with })
-        outro(
-            pc.green(
-                `Workspace assembled (app + core${
-                    args.with?.length ? `, ${args.with.join(', ')}` : ''
-                }). Run \`npm install\` at the root.`
-            )
-        )
+        runAssembleOnly({ root: process.cwd(), members: args.with })
+        outro(pc.green(composeAssembleOutro(args.with)))
         return
     }
 
@@ -108,6 +105,11 @@ async function main(): Promise<void> {
 }
 
 type Mode = 'assemble-only' | 'new' | 'usage'
+
+export function composeAssembleOutro(members: readonly string[] | undefined): string {
+    const extras = members?.length ? `, ${members.join(', ')}` : ''
+    return `Workspace assembled (app + core${extras}). Run \`npm install\` at the root.`
+}
 
 export function resolveMode(args: ReturnType<typeof parseArgs>): Mode {
     if (args.assembleOnly && args.new) {

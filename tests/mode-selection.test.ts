@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ParsedArgs } from '../src/args.ts'
-import { resolveMode } from '../src/index.ts'
+import { composeAssembleOutro, resolveMode } from '../src/index.ts'
 
 let err: ReturnType<typeof vi.spyOn>
 
@@ -39,5 +39,24 @@ describe('resolveMode', () => {
         expect(resolveMode(args)).toBe('usage')
         expect(err).toHaveBeenCalledTimes(1)
         expect(String(err.mock.calls[0]?.[0])).toMatch(/mutually exclusive/)
+    })
+})
+
+describe('composeAssembleOutro', () => {
+    it('lists no extras when --with was not used', () => {
+        expect(composeAssembleOutro(undefined)).toBe('Workspace assembled (app + core). Run `npm install` at the root.')
+    })
+    it('lists no extras when --with was empty', () => {
+        expect(composeAssembleOutro([])).toBe('Workspace assembled (app + core). Run `npm install` at the root.')
+    })
+    it('appends a single --with member', () => {
+        expect(composeAssembleOutro(['mail'])).toBe(
+            'Workspace assembled (app + core, mail). Run `npm install` at the root.'
+        )
+    })
+    it('appends multiple --with members separated by commas', () => {
+        expect(composeAssembleOutro(['mail', 'contacts'])).toBe(
+            'Workspace assembled (app + core, mail, contacts). Run `npm install` at the root.'
+        )
     })
 })

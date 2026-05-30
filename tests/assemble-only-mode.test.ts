@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { runToolingMode } from '../src/index.ts'
+import { runAssembleOnly } from '../src/index.ts'
 
 let dir: string
 afterEach(() => {
@@ -17,11 +17,11 @@ function makeCloneStub(recorded: string[]) {
     }
 }
 
-describe('runToolingMode', () => {
+describe('runAssembleOnly', () => {
     it('writes the workspace manifest and clones via the injected runner', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         const urls: string[] = []
-        runToolingMode({
+        runAssembleOnly({
             root: dir,
             members: ['contacts'],
             clone: makeCloneStub(urls),
@@ -39,7 +39,7 @@ describe('runToolingMode', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         // clone succeeds only for core → app is missing → guard must throw
         expect(() =>
-            runToolingMode({
+            runAssembleOnly({
                 root: dir,
                 clone: (_url, dest) => dest.endsWith('/core'),
             })
@@ -53,7 +53,7 @@ describe('runToolingMode', () => {
             calls.push({ url, ref })
             return true
         }
-        runToolingMode({
+        runAssembleOnly({
             root: dir,
             members: ['app@v1.0.0', 'core@v2.0.0', 'mail@v3.0.0', 'contacts'],
             clone: refStub,
@@ -70,7 +70,7 @@ describe('runToolingMode', () => {
         const prev = process.env.TINYCLD_REPO_BASE
         process.env.TINYCLD_REPO_BASE = 'https://github.com/tinycld'
         try {
-            runToolingMode({
+            runAssembleOnly({
                 root: dir,
                 clone: makeCloneStub(urls),
             })

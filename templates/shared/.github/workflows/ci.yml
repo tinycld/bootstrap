@@ -22,12 +22,19 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: ws/${{ env.PACKAGE }}
-      # 2. Assemble the workspace root: writes package.json + tinycld.packages.ts
+      # 2. Pin a Node that satisfies bootstrap's engines.node (>=24) so the
+      #    assemble step below doesn't depend on whatever ubuntu-latest ships.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+      # 3. Assemble the workspace root: writes package.json + tinycld.packages.ts
       #    from bootstrap's embedded templates, clones app + core as siblings.
       #    The PR's PACKAGE dir is already there and is skipped.
       - name: Assemble workspace (app + core)
         working-directory: ws
         run: TINYCLD_REPO_BASE=https://github.com/tinycld npx @tinycld/bootstrap@latest --assemble-only
+      # 4. Now switch to the version the assembled workspace pins (ws/.node-version
+      #    is written by the assemble step above).
       - uses: actions/setup-node@v5
         with:
           node-version-file: ws/.node-version
@@ -48,9 +55,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: ws/${{ env.PACKAGE }}
+      # Pin a Node that satisfies bootstrap's engines.node (>=24) so the
+      # assemble step below doesn't depend on whatever ubuntu-latest ships.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
       - name: Assemble workspace (app + core)
         working-directory: ws
         run: TINYCLD_REPO_BASE=https://github.com/tinycld npx @tinycld/bootstrap@latest --assemble-only
+      # Switch to the version the assembled workspace pins.
       - uses: actions/setup-node@v5
         with:
           node-version-file: ws/.node-version

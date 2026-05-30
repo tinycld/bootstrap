@@ -119,6 +119,10 @@ describe('copyTemplate — full preset', () => {
         // The PR's code is checked out into ws/<slug>; the rest of the workspace
         // (app + core + root coordination files) comes from bootstrap.
         expect(yml).toContain('npx @tinycld/bootstrap@latest --assemble-only')
+        // Node is pinned BEFORE the assemble step (bootstrap needs >=24); the
+        // workspace-pinned version takes over after.
+        expect(yml).toContain("node-version: '24'")
+        expect(yml).toContain('node-version-file: ws/.node-version')
         // The old workspace meta-repo clone is gone — bootstrap is the source
         // of the root coordination files now.
         expect(yml).not.toContain('repository: tinycld/workspace')

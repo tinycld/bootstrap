@@ -19,7 +19,8 @@
         "access": "public"
     },
     "scripts": {
-        "build": "tsc",
+        "clean": "rm -rf dist",
+        "build": "npm run clean && tsc",
         "dev": "tsx src/index.ts",
         "lint": "biome check .",
         "lint:fix": "biome check --write .",

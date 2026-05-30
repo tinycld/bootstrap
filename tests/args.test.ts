@@ -30,12 +30,13 @@ describe('parseArgs --assemble-only', () => {
     })
 })
 
-describe('parseArgs --tooling (removed)', () => {
-    it('rejects --tooling as an unknown flag', () => {
-        // --tooling looks like an unknown bool flag → parser treats it as a
-        // STRING/NUMBER flag missing a value, which throws ArgParseError.
-        // Either way the invocation does not silently succeed.
-        expect(() => parseArgs(['--tooling'])).toThrow()
+describe('parseArgs --tooling (removed in v2)', () => {
+    it('rejects --tooling with a targeted error pointing at --assemble-only', () => {
+        expect(() => parseArgs(['--tooling'])).toThrow(/--tooling.*removed in v2.*--assemble-only/)
+    })
+    it('rejects --no-tooling with the same targeted error', () => {
+        // No-tooling is just as removed as tooling itself.
+        expect(() => parseArgs(['--no-tooling'])).toThrow(/--tooling.*removed in v2/)
     })
 })
 
