@@ -116,9 +116,13 @@ describe('copyTemplate — full preset', () => {
         const yml = readFileSync(join(target, '.github/workflows/ci.yml'), 'utf8')
         // PACKAGE env carries the slug; the member slot is ws/<slug>.
         expect(yml).toContain('PACKAGE: my-feature')
-        // The workspace meta-repo is the job root, app + core come from bootstrap --tooling.
-        expect(yml).toContain('repository: tinycld/workspace')
-        expect(yml).toContain('npx @tinycld/bootstrap@latest --tooling')
+        // The PR's code is checked out into ws/<slug>; the rest of the workspace
+        // (app + core + root coordination files) comes from bootstrap.
+        expect(yml).toContain('npx @tinycld/bootstrap@latest --assemble-only')
+        // The old workspace meta-repo clone is gone — bootstrap is the source
+        // of the root coordination files now.
+        expect(yml).not.toContain('repository: tinycld/workspace')
+        expect(yml).not.toContain('--tooling')
         // Checks/e2e run scoped to this member via tinycld-pkg.
         expect(yml).toContain('npx tinycld-pkg check')
         expect(yml).toContain('npx tinycld-pkg test:e2e')

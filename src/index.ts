@@ -66,11 +66,17 @@ async function main(): Promise<void> {
         throw err
     }
 
-    if (args.tooling) {
+    const mode = resolveMode(args)
+    if (mode === 'usage') {
+        printUsage()
+        process.exit(2)
+    }
+
+    if (mode === 'assemble-only') {
         runToolingMode({ root: process.cwd(), members: args.with })
         outro(
             pc.green(
-                `Tooling-only workspace assembled (app + core${
+                `Workspace assembled (app + core${
                     args.with?.length ? `, ${args.with.join(', ')}` : ''
                 }). Run \`npm install\` at the root.`
             )
@@ -99,6 +105,37 @@ async function main(): Promise<void> {
     // the bootstrap "self-contained workspace" note.
     const layout = detectLayoutFromTarget(answers.targetDir, answers.slug)
     printNextSteps({ slug: answers.slug, relTarget, linked, layout })
+}
+
+type Mode = 'assemble-only' | 'new' | 'usage'
+
+export function resolveMode(args: ReturnType<typeof parseArgs>): Mode {
+    if (args.assembleOnly && args.new) {
+        console.error(pc.red('Bad arguments: --assemble-only and --new are mutually exclusive.'))
+        return 'usage'
+    }
+    if (args.assembleOnly) return 'assemble-only'
+    if (args.new) return 'new'
+    return 'usage'
+}
+
+function printUsage(): void {
+    const lines = [
+        '',
+        `${pc.bold('@tinycld/bootstrap')} — scaffolder + workspace assembler`,
+        '',
+        pc.bold('Modes (one is required):'),
+        `  ${pc.cyan('--new <slug>')}           Scaffold a new feature package.`,
+        `  ${pc.cyan('--assemble-only')}        Assemble a workspace root (clones app + core + --with features).`,
+        '',
+        pc.bold('Examples:'),
+        '  npx @tinycld/bootstrap --new my-feature',
+        '  npx @tinycld/bootstrap --assemble-only --with mail --with contacts',
+        '',
+        pc.dim('Full reference: https://tinycld.org/docs/reference/cli'),
+        '',
+    ]
+    console.log(lines.join('\n'))
 }
 
 function detectLayoutFromTarget(targetDir: string, slug: string): 'attach' | 'bootstrap' {

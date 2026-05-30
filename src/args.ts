@@ -18,7 +18,10 @@ export interface ParsedArgs {
     target?: string
     link?: boolean
     yes?: boolean
-    tooling?: boolean
+    /** Scaffold a new package. */
+    new?: boolean
+    /** Assemble a workspace (clone app + core + --with features). */
+    assembleOnly?: boolean
     with?: string[]
 }
 
@@ -36,7 +39,7 @@ export class ArgParseError extends Error {
 
 const STRING_FLAGS = new Set(['name', 'description', 'preset', 'icon', 'shortcut', 'target'])
 const NUMBER_FLAGS = new Set(['nav-order'])
-const BOOL_FLAGS = new Set(['server', 'link', 'yes', 'tooling'])
+const BOOL_FLAGS = new Set(['server', 'link', 'yes', 'new', 'assemble-only'])
 const BOOL_ALIASES: Record<string, string> = { y: 'yes' }
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
@@ -153,8 +156,11 @@ function setBool(out: ParsedArgs, name: string, value: boolean): void {
         case 'yes':
             out.yes = value
             break
-        case 'tooling':
-            out.tooling = value
+        case 'new':
+            out.new = value
+            break
+        case 'assemble-only':
+            out.assembleOnly = value
             break
     }
 }
