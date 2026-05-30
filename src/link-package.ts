@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { confirm, isCancel, log, spinner } from '@clack/prompts'
 import pc from 'picocolors'
-import { bootstrapTooling } from './bootstrap-tooling.ts'
+import { assembleWorkspace } from './assemble-workspace.ts'
 import { looksLikeWorkspaceRoot } from './layout.ts'
 
 export type LinkMode = 'prompt' | 'accept' | 'skip'
@@ -14,7 +14,7 @@ export interface LinkPackageInput {
     mode: LinkMode
     /**
      * Injected for tests; defaults to assembling the workspace (app + core +
-     * manifest) at `workspaceDir` via `bootstrapTooling`, honoring
+     * manifest) at `workspaceDir` via `assembleWorkspace`, honoring
      * `TINYCLD_REPO_BASE` so keyless/HTTPS environments work.
      */
     assemble?: (dir: string) => void
@@ -51,7 +51,7 @@ export function ensureMember(workspaceDir: string, slug: string): void {
  *     member and install. The existing root package.json is left untouched.
  *   - bootstrap: `workspaceDir` is a fresh wrapper that only contains the
  *     scaffolded `<slug>/` so far. Assemble the workspace *around* it —
- *     `bootstrapTooling` generates the root scaffolding and clones app + core
+ *     `assembleWorkspace` generates the root scaffolding and clones app + core
  *     (no workspace meta-repo) — then ensure the new member and install. The
  *     `postinstall` (`cd app && …`) only succeeds once `app/` exists, which is
  *     why we assemble before installing.
@@ -111,11 +111,11 @@ export async function offerLinkPackage({
 /**
  * Assemble the workspace skeleton at `dir`: write the workspace manifest and
  * clone app + core (honoring `TINYCLD_REPO_BASE` for keyless/HTTPS envs).
- * `bootstrapTooling` is synchronous and throws on failure (unknown member, etc.);
+ * `assembleWorkspace` is synchronous and throws on failure (unknown member, etc.);
  * `offerLinkPackage` wraps the call so the error surfaces in the spinner.
  */
 function realAssemble(dir: string): void {
-    bootstrapTooling({ root: dir, repoBase: process.env.TINYCLD_REPO_BASE })
+    assembleWorkspace({ root: dir, repoBase: process.env.TINYCLD_REPO_BASE })
 }
 
 function realInstall(cwd: string): boolean {

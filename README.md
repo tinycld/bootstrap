@@ -1,22 +1,55 @@
 # @tinycld/bootstrap
 
-Interactive scaffolder for `@tinycld` feature packages. One command produces a repo starter — manifest, CI workflow, lint/typecheck, sample screens, seed, migrations, and (optionally) a Go server — already wired to link into the [`tinycld`](https://github.com/tinycld/tinycld) app shell (which bundles `@tinycld/core`), use the `@tinycld/core/**` import convention, and pass its own CI.
+`@tinycld/bootstrap` does two jobs:
+
+- **`--new <slug>`** — scaffold a new feature package (manifest, CI workflow, sample screens, seed, migrations, optionally a Go server).
+- **`--assemble-only`** — assemble a workspace root in the current directory by cloning the [`app`](https://github.com/tinycld/app) shell, the [`core`](https://github.com/tinycld/core) library, and any features named with `--with <slug>`.
 
 Modeled after [`create-vite`](https://github.com/vitejs/vite/tree/main/packages/create-vite): tiny CLI, templates embedded in the published npm package, no runtime network fetch.
 
 ## Requirements
 
-- **[npm](https://docs.npmjs.com/)** (recommended) on Node ≥ 24 (the package's `engines.node` is `>=24`; older Node may work but is unsupported).
-- A local `tinycld/tinycld` (app shell) checkout as a sibling of the package you're scaffolding. The app shell bundles `@tinycld/core` at `packages/@tinycld/core/` — the scaffolded package's `tsconfig` extends `../tinycld/packages/@tinycld/core/tsconfig.json` and aliases `@tinycld/core/*` to `../tinycld/packages/@tinycld/core/*`. Linking is done from the app shell via `npm run packages:link`. **The scaffolder will offer to clone and link the app shell for you** — the linking step is interactive (or scripted via `--link` / `--no-link`).
-- `git` + `gh` if you intend to use the suggested "initial push" next-step — both are optional.
+- **[npm](https://docs.npmjs.com/)** on Node ≥ 24 (the package's `engines.node` is `>=24`; older Node may work but is unsupported).
+- `git` (always) and `gh` (only for the suggested "initial push" next-step) on `$PATH`.
 
-## Usage
+The two modes are independent — scaffold mode does not require a pre-existing workspace, and assemble mode does not require a scaffolded package. They compose: a common flow is `--assemble-only` once to set up `~/code/tinycld/`, then `--new <slug>` from inside that workspace to add a feature.
+
+## Assemble a workspace (`--assemble-only`)
 
 ```sh
-npx @tinycld/bootstrap my-feature
+mkdir ~/code/tinycld && cd ~/code/tinycld
+npx @tinycld/bootstrap@latest --assemble-only --with mail --with contacts
+npm install                  # links members + runs the generator (postinstall)
+cd app && npm run dev
+```
+
+The CLI writes the workspace coordination files (`package.json`, `tinycld.packages.ts`, `vitest.config.ts`, shared test stubs, the `package-scripts/` CLI) from embedded templates, then clones `app` + `core` as siblings. Each `--with <slug>` adds one feature sibling. `app` and `core` are always cloned; everything else is opt-in.
+
+`--with name@ref` pins a clone to a tag, branch, or commit:
+
+```sh
+npx @tinycld/bootstrap@latest --assemble-only \
+    --with app@v1.2.0 --with core@v1.2.0 --with mail@v0.3.1
+```
+
+Skipped if the target directory already exists, so re-running is safe.
+
+Set `TINYCLD_REPO_BASE` to clone over HTTPS instead of the default SSH (`git@github.com:tinycld`). CI uses this:
+
+```sh
+TINYCLD_REPO_BASE=https://github.com/tinycld \
+    npx @tinycld/bootstrap@latest --assemble-only --with mail
+```
+
+## Scaffold a new package (`--new`)
+
+```sh
+npx @tinycld/bootstrap --new my-feature
 ```
 
 You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/<orgSlug>/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
+
+If `--new` runs from inside an existing workspace root (`app/` and `core/` siblings detected), the new package is scaffolded as a sibling and the link step adds it to the workspace `package.json`. Otherwise the CLI creates a wrapper directory `./tinycld-<slug>/` with the package at `./tinycld-<slug>/<slug>/`, assembles a workspace around it (cloning `app` + `core`), and links — leaving you a self-contained, runnable workspace.
 
 ### Prompts
 
@@ -31,15 +64,18 @@ You'll be walked through an interactive prompt. The positional argument (`my-fea
 | **Keyboard shortcut** (full only) | `f` | Single lowercase letter, or blank. |
 | **Include a Go server?** (full only) | `y` / `n` | If no, `server/` and the manifest's `server` field are omitted. |
 | **Target directory** | `./my-feature` | Default creates the new repo as a child of the current directory. Must not exist or must be empty. |
-| **Link into the app shell?** | `y` / `n` | After scaffolding, the CLI offers to clone (or use existing) `tinycld` app shell, run `npm install` in it, and link this package. Suppress with `--no-link`. |
+| **Link into the workspace?** | `y` / `n` | After scaffolding, the CLI adds the package to the workspace `package.json`'s `workspaces` array and runs `npm install` at the workspace root. If cwd isn't a workspace root, it assembles one (cloning `app` + `core`) first. Suppress with `--no-link`. |
 
 ### Flags (non-interactive use)
 
 Every prompt has a corresponding flag. Pass `--yes` (or `-y`) to accept all defaults and skip everything that wasn't given a flag — useful for scripted scaffolding.
 
-| Flag | Maps to prompt | Notes |
+| Flag | Maps to | Notes |
 |---|---|---|
-| *(positional)* | Package slug | First non-flag argument. |
+| `--new` | Mode selector | Required for scaffold mode. Mutually exclusive with `--assemble-only`. |
+| `--assemble-only` | Mode selector | Required for workspace-assembly mode. Mutually exclusive with `--new`. |
+| `--with <slug>` | Assemble-only | Repeatable. Each adds one feature sibling. Accepts `--with name@ref` to pin to a tag/branch/commit. |
+| *(positional)* | Package slug (scaffold) | First non-flag argument. Pair with `--new` to set the slug non-interactively. |
 | `--name <s>` | Human-readable name | Defaults to title-cased slug. |
 | `--description <s>` | Description | |
 | `--preset <full\|settings-only>` | Preset | |
@@ -48,19 +84,19 @@ Every prompt has a corresponding flag. Pass `--yes` (or `-y`) to accept all defa
 | `--shortcut <c>` | Keyboard shortcut | Single lowercase letter. |
 | `--server` / `--no-server` | Include a Go server | Full preset only. |
 | `--target <dir>` | Target directory | Default `./<slug>`. |
-| `--link` / `--no-link` | Link into the app shell | Forces the post-scaffold link step on or off, skipping the prompt. |
+| `--link` / `--no-link` | Link into the workspace | Forces the post-scaffold link step on or off, skipping the prompt. |
 | `--yes`, `-y` | — | Accept all defaults; with `--no-link`, fully non-interactive. |
 
 Example, fully non-interactive:
 
 ```sh
-npx @tinycld/bootstrap my-feature \
+npx @tinycld/bootstrap --new my-feature \
     --yes --no-link \
     --description "Tracks widgets across the org" \
     --preset full --icon box --nav-order 25 --shortcut w
 ```
 
-`--help` is not wired (yet) — run `npx @tinycld/bootstrap` with no argv to discover prompts interactively.
+`--help` is not wired (yet) — run `npx @tinycld/bootstrap` with no argv to get a usage summary listing both modes.
 
 ## Presets
 
@@ -75,16 +111,16 @@ Matches the shape of `@tinycld/contacts`, `@tinycld/mail`, `@tinycld/calendar`, 
 
 ```
 my-feature/
-├── .github/workflows/ci.yml           # lint + typecheck + unit tests; clones the tinycld app shell + links self
+├── .github/workflows/ci.yml           # assembles the workspace via bootstrap --assemble-only, runs tinycld-pkg check + test:e2e
 ├── .gitignore                          # node_modules, *.tsbuildinfo, lockfiles, .DS_Store
 ├── README.md                           # developer-facing onboarding for this package
 ├── manifest.ts                         # name, slug, routes, nav, collections, seed, server, ...
 ├── package.json                        # @tinycld/my-feature, peer deps, scripts, exports map
-├── tsconfig.json                       # extends ../tinycld/packages/@tinycld/core/tsconfig.json
+├── tsconfig.json                       # extends ../app/tsconfig.package-base.json
 ├── pb-migrations/
 │   └── 1800000000_create_my-feature.js # creates my_feature_items collection
 ├── server/
-│   ├── go.mod                          # module tinycld.org/packages/my-feature; replaces tinycld.org/core → ../../tinycld/packages/@tinycld/core/server
+│   ├── go.mod                          # module tinycld.org/packages/my-feature; replaces tinycld.org/core → ../../core/server
 │   └── register.go                     # func Register(app) hook for server-side wiring
 ├── tests/
 │   └── manifest.test.ts                # vitest smoke test of manifest shape
@@ -131,7 +167,7 @@ my-service/
 
 ## Manifest fields
 
-The scaffolded `manifest.ts` is the single source of truth for what a package contributes. Templates only fill in the fields appropriate for the chosen preset; the full reference (every field, when to use it) lives in [`tinycld/tinycld`'s docs](https://github.com/tinycld/tinycld). Quick summary:
+The scaffolded `manifest.ts` is the single source of truth for what a package contributes. Templates only fill in the fields appropriate for the chosen preset; the full reference (every field, when to use it) lives in the [manifest schema docs](https://tinycld.org/docs/reference/manifest-schema). Quick summary:
 
 | Field | Meaning |
 |---|---|
@@ -150,7 +186,7 @@ All path-shaped fields use **short subpaths** (`'screens'`, `'sidebar'`, `'colle
 
 ## After scaffolding
 
-If you accepted the link-into-app-shell prompt, the package is already linked in `tinycld/`. Otherwise the CLI prints next-steps you can copy verbatim:
+If you accepted the link-into-workspace prompt, the package is already a workspace member and `npm install` has run. Otherwise the CLI prints next-steps you can copy verbatim:
 
 ```sh
 # 1. Initialize git and push to GitHub
@@ -160,43 +196,51 @@ git add .
 git commit -m 'chore: initial scaffold'
 gh repo create tinycld/my-feature --public --source=. --push
 
-# 2. Link into the tinycld app shell so you can develop against it
-cd ../tinycld
-npm run packages:link ../my-feature
+# 2. Link into the workspace (add as a member, then install)
+cd ..
+# ensure "my-feature" is listed in the workspace package.json's "workspaces" array, then:
+npm install
 
-# 3. Verify (still inside tinycld/)
-npm run checks
+# 3. Verify (scoped to this member)
+cd my-feature
+npx tinycld-pkg check
 ```
 
-Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase, etc. No further changes to `tinycld` or `core` are needed.
+Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to `app/` or `core/` are needed.
 
-> ⚠️ **`tinycld/metro.config.cjs` scans `packages/` once at boot.** If you link a new package while `npm run start` is already running, restart it (Ctrl-C, then `npm run start`) so Metro's resolver picks it up. CI is fine — it always starts fresh.
+> ⚠️ **`app/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `npm run dev` is already running, restart it (Ctrl-C, then `npm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
 
 ### Day-to-day development
 
-Most work happens **inside `tinycld/`** with your package linked. Run the app, make changes, see them live:
+Most work happens **from inside the package** with the workspace assembled around it:
 
 ```sh
-cd ../tinycld
-npm run start        # expo + pocketbase, fronted by a single-port dev proxy
-npm run checks       # biome + tsc — covers all linked packages including yours
-npm run test:unit    # vitest, includes your tests/ via the packages glob
+cd my-feature
+npx tinycld-pkg check        # biome + tsc + vitest, scoped to this member
+npx tinycld-pkg test         # vitest only
+npx tinycld-pkg test:e2e     # playwright for this member
 ```
 
-Hot reload picks up changes in your package the same way as core code, since it's symlinked.
+To run the app itself, drop into the app shell:
+
+```sh
+cd ../app
+npm run dev                  # expo + pocketbase, fronted by a single-port dev proxy
+npm run checks               # biome + tsc, ecosystem-wide
+```
+
+Hot reload picks up changes in your package the same way as core code, since members are symlinked.
 
 ### Running the scaffolded package's own CI locally
 
-The package's `.github/workflows/ci.yml` reproduces the link-and-check dance locally. The shape:
+The package's `.github/workflows/ci.yml` mirrors what GitHub Actions runs:
 
-1. Clone `tinycld/tinycld` as a sibling. (Core ships inside the app shell; no separate core clone needed.)
-2. `npm install` inside `tinycld/` (this also runs the package generator via the postinstall hook).
-3. `npm run packages:link ../<your-pkg>` from `tinycld/`.
-4. **Lint from inside `tinycld/`** (`npm run lint`). Biome lives in the app shell and its config (`tinycld/biome.json`) is the single source of truth for every linked package. There is no `biome.json` in the package repo.
-5. **Typecheck from inside `tinycld/`** (`npm run typecheck`) — the app shell's tsconfig pulls in `expo`'s base, `uniwind` global type augments (which add `className` to RN components), and the live `~/types/pbSchema` generated from PocketBase. A standalone `tsc` invocation inside the package can't see those.
-6. Run unit tests from the package (vitest discovers them via the `packages/@*/*/tests/**` glob in `tinycld/vitest.config.ts`).
+1. Assemble a workspace via `npx @tinycld/bootstrap --assemble-only`. The job has `--with <this-pkg>@<sha>` so it lands the exact commit under test.
+2. `npm install` at the workspace root (this also runs the package generator via the postinstall hook).
+3. `npx tinycld-pkg check` from inside the package directory — runs biome (scoped), tsc, and vitest.
+4. `npx tinycld-pkg test:e2e` if the package ships Playwright specs under `tests/`.
 
-When you push, GitHub Actions runs that exact flow.
+Biome lives only in `app/biome.json` (one config across every member). There is no `biome.json` in the scaffolded package repo. Typecheck runs against the app shell's tsconfig via `tinycld-pkg`, so the `expo` base, `uniwind` global augments, and the live `pbSchema` types are all in scope.
 
 ## Import conventions the templates assume
 

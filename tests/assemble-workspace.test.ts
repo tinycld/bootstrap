@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { bootstrapTooling, copyWorkspaceTemplate, writeWorkspaceManifest } from '../src/bootstrap-tooling.ts'
+import { assembleWorkspace, copyWorkspaceTemplate, writeWorkspaceManifest } from '../src/assemble-workspace.ts'
 
 let dir: string
 afterEach(() => {
@@ -157,11 +157,11 @@ describe('copyWorkspaceTemplate', () => {
     })
 })
 
-describe('bootstrapTooling (clone scope)', () => {
+describe('assembleWorkspace (clone scope)', () => {
     it('clones ONLY app + core by default (no features, no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
-        const present = bootstrapTooling({ root: dir, clone: makeCloneStub(urls) })
+        const present = assembleWorkspace({ root: dir, clone: makeCloneStub(urls) })
         // No workspace clone: root scaffolding is generated, then app + core clone.
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
         expect(memberNames).toEqual(['app', 'core'])
@@ -173,19 +173,19 @@ describe('bootstrapTooling (clone scope)', () => {
     it('clones app + core + only the requested features (no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
-        bootstrapTooling({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
+        assembleWorkspace({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
         expect(memberNames).toEqual(['app', 'core', 'mail'])
     })
 
     it('throws on an unknown feature member', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        expect(() => bootstrapTooling({ root: dir, members: ['nope'], clone: () => true })).toThrow(/Unknown feature/)
+        expect(() => assembleWorkspace({ root: dir, members: ['nope'], clone: () => true })).toThrow(/Unknown feature/)
     })
 
     it('still validates the NAME part when a member carries an @ref', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        expect(() => bootstrapTooling({ root: dir, members: ['nope@v1.0.0'], clone: () => true })).toThrow(
+        expect(() => assembleWorkspace({ root: dir, members: ['nope@v1.0.0'], clone: () => true })).toThrow(
             /Unknown feature/
         )
     })
@@ -200,7 +200,7 @@ describe('bootstrapTooling (clone scope)', () => {
         mkdirSync(join(dir, 'app'))
         writeFileSync(join(dir, 'app', 'package.json'), JSON.stringify({ name: 'app', version: 'pinned' }))
         const urls: string[] = []
-        const present = bootstrapTooling({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
+        const present = assembleWorkspace({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const cloned = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
         // app is NOT re-cloned...
         expect(cloned).not.toContain('app')
@@ -215,7 +215,7 @@ describe('bootstrapTooling (clone scope)', () => {
     })
 })
 
-describe('bootstrapTooling (tag pinning)', () => {
+describe('assembleWorkspace (tag pinning)', () => {
     // Records (url, ref) per clone so we can assert which ref each member is pinned to.
     function makeRefStub(calls: { url: string; ref?: string }[]) {
         return (url: string, dest: string, ref?: string): boolean => {
@@ -230,7 +230,7 @@ describe('bootstrapTooling (tag pinning)', () => {
     it('clones a feature member at the ref given in --with name@ref', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const calls: { url: string; ref?: string }[] = []
-        bootstrapTooling({ root: dir, members: ['contacts@v1.2.3', 'mail'], clone: makeRefStub(calls) })
+        assembleWorkspace({ root: dir, members: ['contacts@v1.2.3', 'mail'], clone: makeRefStub(calls) })
         const contacts = calls.find((c) => c.url.endsWith('/contacts.git'))
         const mail = calls.find((c) => c.url.endsWith('/mail.git'))
         expect(contacts?.ref).toBe('v1.2.3')
@@ -241,7 +241,7 @@ describe('bootstrapTooling (tag pinning)', () => {
     it('pins app and core via appRef / coreRef options', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const calls: { url: string; ref?: string }[] = []
-        bootstrapTooling({ root: dir, appRef: 'v2.0.0', coreRef: 'v3.1.0', clone: makeRefStub(calls) })
+        assembleWorkspace({ root: dir, appRef: 'v2.0.0', coreRef: 'v3.1.0', clone: makeRefStub(calls) })
         expect(calls.find((c) => c.url.endsWith('/app.git'))?.ref).toBe('v2.0.0')
         expect(calls.find((c) => c.url.endsWith('/core.git'))?.ref).toBe('v3.1.0')
     })
@@ -249,14 +249,14 @@ describe('bootstrapTooling (tag pinning)', () => {
     it('dedupes a member given both bare and with @ref (clones once, pinned)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const calls: { url: string; ref?: string }[] = []
-        bootstrapTooling({ root: dir, members: ['contacts', 'contacts@v1.2.3'], clone: makeRefStub(calls) })
+        assembleWorkspace({ root: dir, members: ['contacts', 'contacts@v1.2.3'], clone: makeRefStub(calls) })
         const contactsClones = calls.filter((c) => c.url.endsWith('/contacts.git'))
         expect(contactsClones).toHaveLength(1)
     })
 
     it('returns the bare member NAME (not name@ref) in present[]', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        const present = bootstrapTooling({
+        const present = assembleWorkspace({
             root: dir,
             members: ['contacts@v1.2.3'],
             clone: makeRefStub([]),
@@ -266,11 +266,11 @@ describe('bootstrapTooling (tag pinning)', () => {
     })
 })
 
-describe('bootstrapTooling (no workspace meta-repo clone)', () => {
+describe('assembleWorkspace (no workspace meta-repo clone)', () => {
     it('NEVER clones a workspace meta-repo — root scaffolding is generated', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
-        bootstrapTooling({ root: dir, repoBase: 'git@github.com:tinycld', clone: makeCloneStub(urls) })
+        assembleWorkspace({ root: dir, repoBase: 'git@github.com:tinycld', clone: makeCloneStub(urls) })
         // No /workspace.git clone at all.
         expect(urls.some((u) => u.includes('/workspace.git'))).toBe(false)
         // app + core are still cloned.
@@ -280,14 +280,14 @@ describe('bootstrapTooling (no workspace meta-repo clone)', () => {
 
     it("never adds 'workspace' to present[]", () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        const present = bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
+        const present = assembleWorkspace({ root: dir, clone: makeCloneStub([]) })
         expect(present).not.toContain('workspace')
         expect(present[0]).not.toBe('workspace')
     })
 
     it('generates the root manifest + lays down the template scaffolding', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
+        assembleWorkspace({ root: dir, clone: makeCloneStub([]) })
         // writeWorkspaceManifest output
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
         expect(pkg.name).toBe('@tinycld/workspace')
@@ -303,7 +303,7 @@ describe('bootstrapTooling (no workspace meta-repo clone)', () => {
     it('does not overwrite pre-existing root scaffolding (e.g. a real checkout / CI-provided file)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeFileSync(join(dir, 'tinycld.packages.ts'), 'export const packages = ["custom"]')
-        bootstrapTooling({ root: dir, clone: makeCloneStub([]) })
+        assembleWorkspace({ root: dir, clone: makeCloneStub([]) })
         expect(readFileSync(join(dir, 'tinycld.packages.ts'), 'utf-8')).toBe('export const packages = ["custom"]')
     })
 })

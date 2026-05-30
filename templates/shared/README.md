@@ -17,9 +17,10 @@ linked by a single `npm install` at the root.
 # In a fresh workspace directory, clone this package into a member slot…
 git clone git@github.com:tinycld/{{PKG_SLUG}}.git
 
-# …then pull in the rest of the workspace tooling (app + core + the root
-# package.json / lockfile). bootstrap --tooling skips dirs that already exist.
-npx @tinycld/bootstrap@latest --tooling
+# …then assemble the rest of the workspace (app + core + the workspace
+# package.json / tinycld.packages.ts). bootstrap --assemble-only skips
+# dirs that already exist.
+npx @tinycld/bootstrap@latest --assemble-only
 
 # Link every member with one install at the WORKSPACE ROOT (never inside a
 # member — siblings have no node_modules of their own; deps hoist to the root).
@@ -49,11 +50,11 @@ There is no `biome.json` in this repo — biome lives only in the app shell and
 ## CI
 
 `.github/workflows/ci.yml` runs typecheck, unit tests, and e2e on every push to
-`main` and every PR. It checks out `tinycld/workspace` as the job root, drops
-this PR's code into its member slot, assembles `app` + `core` via
-`@tinycld/bootstrap --tooling`, installs at the workspace root, and runs
-`tinycld-pkg check` / `tinycld-pkg test:e2e` — exactly what a developer runs
-locally.
+`main` and every PR. It checks out this PR's code into a member slot, assembles
+the rest of the workspace (`app` + `core` + the workspace `package.json` and
+coordination files) via `npx @tinycld/bootstrap --assemble-only`, installs at
+the workspace root, and runs `tinycld-pkg check` / `tinycld-pkg test:e2e` —
+exactly what a developer runs locally.
 
 ## Package anatomy
 

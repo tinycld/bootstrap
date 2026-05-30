@@ -18,7 +18,10 @@ export interface ParsedArgs {
     target?: string
     link?: boolean
     yes?: boolean
-    tooling?: boolean
+    /** Scaffold a new package. */
+    new?: boolean
+    /** Assemble a workspace (clone app + core + --with features). */
+    assembleOnly?: boolean
     with?: string[]
 }
 
@@ -36,8 +39,15 @@ export class ArgParseError extends Error {
 
 const STRING_FLAGS = new Set(['name', 'description', 'preset', 'icon', 'shortcut', 'target'])
 const NUMBER_FLAGS = new Set(['nav-order'])
-const BOOL_FLAGS = new Set(['server', 'link', 'yes', 'tooling'])
+const BOOL_FLAGS = new Set(['server', 'link', 'yes', 'new', 'assemble-only'])
 const BOOL_ALIASES: Record<string, string> = { y: 'yes' }
+
+// Removed in v2. Surface a targeted error so users who hit these (from old
+// docs, old CI workflows, or muscle memory) get an actionable message instead
+// of the generic "unknown flag" / "missing value" they'd otherwise see.
+const REMOVED_FLAGS: Record<string, string> = {
+    tooling: '`--tooling` was removed in v2. Use `--assemble-only` instead.',
+}
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
     const out: ParsedArgs = {}
@@ -59,6 +69,11 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         const isNegated = rawName.startsWith('no-')
         const baseName = isNegated ? rawName.slice(3) : rawName
         const canonical = BOOL_ALIASES[baseName] ?? baseName
+
+        if (canonical in REMOVED_FLAGS) {
+            issues.push({ flag: canonical, reason: REMOVED_FLAGS[canonical] ?? 'removed' })
+            continue
+        }
 
         if (BOOL_FLAGS.has(canonical)) {
             if (inlineValue !== undefined) {
@@ -153,8 +168,11 @@ function setBool(out: ParsedArgs, name: string, value: boolean): void {
         case 'yes':
             out.yes = value
             break
-        case 'tooling':
-            out.tooling = value
+        case 'new':
+            out.new = value
+            break
+        case 'assemble-only':
+            out.assembleOnly = value
             break
     }
 }

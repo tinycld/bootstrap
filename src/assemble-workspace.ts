@@ -5,14 +5,14 @@ import { fileURLToPath } from 'node:url'
 
 // All feature members that exist in the ecosystem. The workspace manifest lists
 // ALL of them (npm tolerates absent dirs), so a partial checkout still installs.
-// But --tooling CLONES only app+core+requested — we do NOT force-clone all.
+// But --assemble-only CLONES only app+core+requested — we do NOT force-clone all.
 const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', 'google-takeout-import'] as const
 
-// app + core are always cloned by tooling mode (the minimum viable workspace);
-// the clone set in bootstrapTooling seeds them directly (pinnable via
-// appRef/coreRef). package-scripts (the tinycld-pkg CLI) now lives INSIDE the
-// app member at app/package-scripts, so it arrives with the app clone and is
-// never cloned separately.
+// app + core are always cloned by assemble-only mode (the minimum viable
+// workspace); the clone set in assembleWorkspace seeds them directly (pinnable
+// via appRef/coreRef). package-scripts (the tinycld-pkg CLI) now lives INSIDE
+// the app member at app/package-scripts, so it arrives with the app clone and
+// is never cloned separately.
 
 // Listed in the manifest workspaces array (everything that could exist). The
 // nested member path app/package-scripts is a valid npm workspace entry.
@@ -74,8 +74,8 @@ export function writeWorkspaceManifest(dir: string): void {
 
 /**
  * Resolve the workspace-template dir relative to this module. Published builds
- * have `dist/bootstrap-tooling.js` next to `templates/`; dev has
- * `src/bootstrap-tooling.ts` under the same parent. Both → `../templates/workspace`.
+ * have `dist/assemble-workspace.js` next to `templates/`; dev has
+ * `src/assemble-workspace.ts` under the same parent. Both → `../templates/workspace`.
  */
 function resolveWorkspaceTemplateDir(): string {
     const here = dirname(fileURLToPath(import.meta.url))
@@ -114,7 +114,7 @@ export function copyWorkspaceTemplate(dir: string, templateDir = resolveWorkspac
     return written
 }
 
-export interface BootstrapToolingOptions {
+export interface AssembleWorkspaceOptions {
     /** Directory to assemble the workspace in (becomes the workspace root). */
     root: string
     /**
@@ -160,7 +160,7 @@ function realClone(url: string, dest: string, ref?: string): boolean {
  * NOT run npm install (the caller / CI controls that, since it may want a
  * clean `npm ci`).
  */
-export function bootstrapTooling(opts: BootstrapToolingOptions): string[] {
+export function assembleWorkspace(opts: AssembleWorkspaceOptions): string[] {
     // Each requested member may be `name` or `name@ref`. Validate the NAME part.
     const requested = (opts.members ?? []).map(splitRef)
     const unknown = requested.filter((m) => !ALL_FEATURES.includes(m.name as (typeof ALL_FEATURES)[number]))
