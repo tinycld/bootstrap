@@ -93,6 +93,45 @@ describe('offerLinkPackage', () => {
         expect(installed).toBe(dir)
     })
 
+    it('bootstrap mode threads --with members through to the assemble call', async () => {
+        dir = mkdtempSync(join(tmpdir(), 'lp-'))
+        let assembledMembers: readonly string[] | undefined
+        await offerLinkPackage({
+            slug: 'foo',
+            workspaceDir: dir,
+            mode: 'accept',
+            members: ['drive', 'mail@v1.2.3'],
+            assemble: (_d, m) => {
+                assembledMembers = m
+            },
+            install: () => true,
+        })
+        // Pass-through is verbatim (including pinned ref). assembleWorkspace
+        // splits the @ref off on its own — link-package must NOT pre-strip it.
+        expect(assembledMembers).toEqual(['drive', 'mail@v1.2.3'])
+    })
+
+    it('attach mode ignores --with members (existing workspace is untouched)', async () => {
+        dir = mkdtempSync(join(tmpdir(), 'lp-'))
+        writeWorkspaceJson(dir, ['app', 'core'])
+        let assembleCalled = false
+        const r = await offerLinkPackage({
+            slug: 'foo',
+            workspaceDir: dir,
+            mode: 'accept',
+            members: ['drive'],
+            assemble: () => {
+                assembleCalled = true
+            },
+            install: () => true,
+        })
+        expect(r).toBe(true)
+        // The whole point of attach mode: don't re-assemble. The workspace's
+        // present-member set is whatever it already was on disk; --with is
+        // silently dropped rather than re-cloning into an existing tree.
+        expect(assembleCalled).toBe(false)
+    })
+
     it('skip mode returns false, no side effects', async () => {
         dir = mkdtempSync(join(tmpdir(), 'lp-'))
         let touched = false

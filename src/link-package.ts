@@ -13,11 +13,18 @@ export interface LinkPackageInput {
     workspaceDir: string
     mode: LinkMode
     /**
+     * Feature members to clone IN ADDITION to app+core when this is a bootstrap-mode
+     * assembly (i.e. `workspaceDir` is not yet a workspace root). Ignored in attach
+     * mode — an existing workspace root is left untouched, so its present-member set
+     * is whatever it already was on disk. Threads `--with` from `--new + --with`.
+     */
+    members?: readonly string[]
+    /**
      * Injected for tests; defaults to assembling the workspace (app + core +
-     * manifest) at `workspaceDir` via `assembleWorkspace`, honoring
+     * `members`) at `workspaceDir` via `assembleWorkspace`, honoring
      * `TINYCLD_REPO_BASE` so keyless/HTTPS environments work.
      */
-    assemble?: (dir: string) => void
+    assemble?: (dir: string, members?: readonly string[]) => void
     /** Injected for tests; defaults to a real `npm install`. */
     install?: (cwd: string) => boolean
 }
@@ -65,6 +72,7 @@ export async function offerLinkPackage({
     slug,
     workspaceDir,
     mode,
+    members,
     assemble = realAssemble,
     install = realInstall,
 }: LinkPackageInput): Promise<boolean> {
@@ -73,9 +81,16 @@ export async function offerLinkPackage({
     // A wrapper that isn't yet a workspace root needs app + core assembled in.
     const needsClone = !looksLikeWorkspaceRoot(workspaceDir)
 
+    // Describe what we're about to clone in the prompt + spinner so the user
+    // (and the test runner) sees that --with members were honored.
+    const assemblyLabel =
+        members && members.length > 0
+            ? `app + core + ${members.map((m) => m.replace(/@.*$/, '')).join(' + ')}`
+            : 'app + core'
+
     if (mode === 'prompt') {
         const message = needsClone
-            ? `Assemble the tinycld workspace (app + core) and link ${pc.bold(slug)} now?`
+            ? `Assemble the tinycld workspace (${assemblyLabel}) and link ${pc.bold(slug)} now?`
             : `Link ${pc.bold(slug)} into the workspace now?`
         const answer = await confirm({ message, initialValue: true })
         if (isCancel(answer) || answer !== true) return false
@@ -83,9 +98,9 @@ export async function offerLinkPackage({
 
     if (needsClone) {
         const s = spinner()
-        s.start('Assembling the tinycld workspace (app + core)')
+        s.start(`Assembling the tinycld workspace (${assemblyLabel})`)
         try {
-            assemble(workspaceDir)
+            assemble(workspaceDir, members)
         } catch (err) {
             s.stop(pc.red('Workspace assembly failed'), 1)
             log.error(err instanceof Error ? err.message : String(err))
@@ -110,12 +125,18 @@ export async function offerLinkPackage({
 
 /**
  * Assemble the workspace skeleton at `dir`: write the workspace manifest and
- * clone app + core (honoring `TINYCLD_REPO_BASE` for keyless/HTTPS envs).
- * `assembleWorkspace` is synchronous and throws on failure (unknown member, etc.);
- * `offerLinkPackage` wraps the call so the error surfaces in the spinner.
+ * clone app + core (+ any `members` from --with), honoring `TINYCLD_REPO_BASE`
+ * for keyless/HTTPS envs.
+ * `assembleWorkspace` is synchronous and throws on failure (unknown member,
+ * clone error, etc.); `offerLinkPackage` wraps the call so the error surfaces
+ * in the spinner.
  */
-function realAssemble(dir: string): void {
-    assembleWorkspace({ root: dir, repoBase: process.env.TINYCLD_REPO_BASE })
+function realAssemble(dir: string, members?: readonly string[]): void {
+    assembleWorkspace({
+        root: dir,
+        repoBase: process.env.TINYCLD_REPO_BASE,
+        members,
+    })
 }
 
 function realInstall(cwd: string): boolean {

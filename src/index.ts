@@ -87,10 +87,16 @@ async function main(): Promise<void> {
 
     // The package lives at `<workspaceDir>/<slug>`, so its parent is the
     // workspace dir in both attach (cwd) and bootstrap (wrapper) modes.
+    //
+    // `--with` features ride into the assembly here in bootstrap mode (a fresh
+    // wrapper that's not yet a workspace root). In attach mode the existing
+    // workspace is left untouched and `--with` is a no-op — the workspace
+    // already has whatever members it has on disk.
     const linked = await offerLinkPackage({
         slug: answers.slug,
         workspaceDir: dirname(answers.targetDir),
         mode: resolveLinkMode(args),
+        members: args.with,
     })
 
     const relTarget = relative(process.cwd(), answers.targetDir) || answers.targetDir
