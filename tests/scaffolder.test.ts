@@ -168,14 +168,21 @@ describe('copyTemplate — full preset', () => {
         expect(m).toContain("script: 'seed'")
     })
 
-    it('server go.mod replaces core with the sibling member path', () => {
+    it('server go.mod requires core but does NOT replace it', () => {
         const target = scaffold()
         const goMod = readFileSync(join(target, 'server/go.mod'), 'utf8')
-        // Core is a standalone sibling: from <pkg>/server/ that's ../../core/server.
-        expect(goMod).toContain('replace tinycld.org/core => ../../core/server')
+        expect(goMod).toContain('module tinycld.org/packages/my-feature')
+        expect(goMod).toContain('tinycld.org/core v0.0.0')
+        // The replace must NOT live in go.mod. When the assembled app build
+        // `use`s this member's server via app/server/go.work, a go.mod replace
+        // (→ ../../core/server) collides with the npm-symlinked core path
+        // (node_modules/@tinycld/core/server), producing
+        // "conflicting replacements for tinycld.org/core" and a failed `go build`.
+        // Core is resolved instead through the generator-emitted, gitignored
+        // server/go.work (buildMemberGoWork) for standalone member builds only.
+        expect(goMod).not.toContain('replace tinycld.org/core')
         // The old bundled-core path is gone.
         expect(goMod).not.toContain('packages/@tinycld/core')
-        expect(goMod).toContain('module tinycld.org/packages/my-feature')
     })
 
     it('package.json exports point at nested paths', () => {

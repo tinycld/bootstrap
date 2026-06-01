@@ -6,5 +6,3 @@ require (
 	github.com/pocketbase/pocketbase v0.37.5
 	tinycld.org/core v0.0.0
 )
-
-replace tinycld.org/core => ../../core/server
