@@ -18,22 +18,51 @@ const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', '
 // nested member path app/package-scripts is a valid npm workspace entry.
 const ALL_MEMBERS = ['app', 'app/package-scripts', 'core', ...ALL_FEATURES] as const
 
+// pnpm version pinned via the package.json "packageManager" field so corepack
+// resolves the same pnpm everywhere (local, CI, EAS). Bump in lockstep with the
+// workspace's committed packageManager.
+const PNPM_VERSION = '11.3.0'
+
 /**
- * Write (or merge into) a workspace-root package.json + .npmrc in `dir`.
+ * pnpm-workspace.yaml contents: member discovery list + the settings the
+ * ecosystem depends on. node-linker=hoisted reproduces npm's flat node_modules
+ * so feature siblings (peerDeps-only, no node_modules of their own) resolve
+ * react/expo/etc. up to the root, and Metro/tsc resolution work unchanged.
+ * pnpm 10+ reads these keys from THIS file, not .npmrc.
+ */
+function pnpmWorkspaceYaml(): string {
+    const members = ALL_MEMBERS.map((m) => `  - ${m}`).join('\n')
+    return [
+        'nodeLinker: hoisted',
+        'linkWorkspacePackages: true',
+        'strictPeerDependencies: false',
+        'enablePrePostScripts: true',
+        '',
+        'packages:',
+        members,
+        '',
+        '# Build-script approvals (pnpm blocks dependency build scripts by default).',
+        'allowBuilds:',
+        '  esbuild: true',
+        "  '@sentry/cli': true",
+        '',
+    ].join('\n')
+}
+
+/**
+ * Write (or merge into) the workspace-root coordination files in `dir`:
+ * package.json, pnpm-workspace.yaml, and scripts/link-members.ts.
  *
- * When `dir/package.json` already exists (e.g. provided by the workspace clone),
- * we preserve its fields and only enforce the two things bootstrap owns:
- * the complete `workspaces` list (so later --with clones need no manifest edit)
- * and the `postinstall` script. All other fields — devDependencies, engines,
- * volta, extra scripts, etc. — survive as-is.
+ * The workspace is a pnpm workspace. Member discovery + pnpm settings live in
+ * pnpm-workspace.yaml (always rewritten — bootstrap owns the member list).
+ * package.json carries the pinned packageManager, the tsx devDep the postinstall
+ * needs, and the postinstall script (link-members + generator). When a
+ * package.json already exists (real workspace checkout), its other fields are
+ * preserved and only the bootstrap-owned bits are enforced.
  *
- * When no package.json exists yet (workspace clone was skipped), the full
- * generated defaults are written, matching the previous behaviour.
- *
- * The workspaces array ALWAYS lists every possible member — npm ignores entries
- * whose dirs are absent, so a partial checkout installs fine.
- *
- * .npmrc is written only when one does not already exist, for the same reason.
+ * A legacy npm `workspaces` array is also written as a monorepo-detection HINT
+ * for external tooling (EAS/expo archiver keys off it, not pnpm-workspace.yaml).
+ * pnpm ignores it when pnpm-workspace.yaml is present.
  */
 export function writeWorkspaceManifest(dir: string): void {
     const pkgPath = join(dir, 'package.json')
@@ -50,6 +79,10 @@ export function writeWorkspaceManifest(dir: string): void {
         typeof existing.scripts === 'object' && existing.scripts !== null
             ? (existing.scripts as Record<string, string>)
             : {}
+    const existingDevDeps =
+        typeof existing.devDependencies === 'object' && existing.devDependencies !== null
+            ? (existing.devDependencies as Record<string, string>)
+            : {}
 
     const pkg = {
         name: '@tinycld/workspace',
@@ -57,18 +90,32 @@ export function writeWorkspaceManifest(dir: string): void {
         private: true,
         type: 'module',
         ...existing,
-        // Always enforce the canonical workspaces list and postinstall script.
+        packageManager: `pnpm@${PNPM_VERSION}`,
+        // Monorepo-detection hint for external tooling (see doc comment); pnpm
+        // itself reads members from pnpm-workspace.yaml and ignores this.
         workspaces: [...ALL_MEMBERS],
         scripts: {
             ...existingScripts,
-            postinstall: 'cd app && npm run packages:generate && npm run assets:copy-pdfjs',
+            postinstall:
+                'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs',
+        },
+        devDependencies: {
+            ...existingDevDeps,
+            tsx: '^4.21.0',
         },
     }
     writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`)
 
+    // pnpm-workspace.yaml is the source of truth for members + settings — always
+    // rewrite it (unlike package.json, no human-owned fields live here).
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml())
+
+    // Minimal .npmrc: all pnpm settings live in pnpm-workspace.yaml (pnpm 10+
+    // reads them there, not from .npmrc). Only written when absent (don't
+    // clobber a real checkout's).
     const npmrcPath = join(dir, '.npmrc')
     if (!existsSync(npmrcPath)) {
-        writeFileSync(npmrcPath, 'legacy-peer-deps=true\n')
+        writeFileSync(npmrcPath, '# pnpm settings live in pnpm-workspace.yaml (pnpm 10+ reads them there).\n')
     }
 }
 
@@ -157,8 +204,8 @@ function realClone(url: string, dest: string, ref?: string): boolean {
  * already present — e.g. a CI-checked-out member). There is NO workspace
  * meta-repo clone: bootstrap is the source of all root scaffolding.
  * Unknown member names throw. Returns the members that ended up present. Does
- * NOT run npm install (the caller / CI controls that, since it may want a
- * clean `npm ci`).
+ * NOT run the install (the caller / CI controls that — e.g. `pnpm install` or a
+ * frozen-lockfile install for reproducible builds).
  */
 export function assembleWorkspace(opts: AssembleWorkspaceOptions): string[] {
     // Each requested member may be `name` or `name@ref`. Validate the NAME part.

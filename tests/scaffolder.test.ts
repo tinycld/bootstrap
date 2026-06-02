@@ -127,9 +127,13 @@ describe('copyTemplate — full preset', () => {
         // of the root coordination files now.
         expect(yml).not.toContain('repository: tinycld/workspace')
         expect(yml).not.toContain('--tooling')
-        // Checks/e2e run scoped to this member via tinycld-pkg.
-        expect(yml).toContain('npx tinycld-pkg check')
-        expect(yml).toContain('npx tinycld-pkg test:e2e')
+        // Checks/e2e run scoped to this member via tinycld-pkg (pnpm exec under
+        // the pnpm workspace).
+        expect(yml).toContain('pnpm exec tinycld-pkg check')
+        expect(yml).toContain('pnpm exec tinycld-pkg test:e2e')
+        // Install is pnpm, not npm.
+        expect(yml).toContain('pnpm install')
+        expect(yml).not.toContain('run: npm install')
         // Old-layout wiring is gone — no app-shell clone, no packages:link, no CORE_REPO.
         expect(yml).not.toContain('packages:link')
         expect(yml).not.toContain('CORE_REPO')

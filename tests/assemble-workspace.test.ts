@@ -39,11 +39,23 @@ describe('writeWorkspaceManifest', () => {
         }
     })
 
-    it('writes an .npmrc with legacy-peer-deps', () => {
+    it('writes a pnpm-workspace.yaml with the member list + pnpm settings', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
-        expect(existsSync(join(dir, '.npmrc'))).toBe(true)
-        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('legacy-peer-deps=true')
+        expect(existsSync(join(dir, 'pnpm-workspace.yaml'))).toBe(true)
+        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+        expect(yaml).toContain('nodeLinker: hoisted')
+        expect(yaml).toContain('packages:')
+        expect(yaml).toContain('  - app')
+        expect(yaml).toContain('  - core')
+    })
+
+    it('pins packageManager + adds the tsx devDep', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        expect(pkg.packageManager).toMatch(/^pnpm@/)
+        expect(pkg.devDependencies.tsx).toBeTruthy()
     })
 
     it('has no duplicate workspace entries', () => {
@@ -68,13 +80,16 @@ describe('writeWorkspaceManifest', () => {
         writeFileSync(join(dir, 'package.json'), JSON.stringify(existing))
         writeWorkspaceManifest(dir)
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        // Extra fields survive
-        expect(pkg.devDependencies).toEqual({ typescript: '^5.0.0' })
+        // Extra devDeps survive; bootstrap adds tsx (needed by the postinstall).
+        expect(pkg.devDependencies.typescript).toBe('^5.0.0')
+        expect(pkg.devDependencies.tsx).toBeTruthy()
         expect(pkg.engines).toEqual({ node: '>=20' })
         // Extra script survives
         expect(pkg.scripts.prepare).toBe('echo hi')
         // postinstall is always enforced to the canonical value
-        expect(pkg.scripts.postinstall).toBe('cd app && npm run packages:generate && npm run assets:copy-pdfjs')
+        expect(pkg.scripts.postinstall).toBe(
+            'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs'
+        )
         // workspaces is always the full canonical list
         for (const m of [
             'app',
@@ -99,7 +114,9 @@ describe('writeWorkspaceManifest', () => {
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
         expect(pkg.name).toBe('@tinycld/workspace')
         expect(pkg.version).toBe('0.0.0')
-        expect(pkg.scripts.postinstall).toBe('cd app && npm run packages:generate && npm run assets:copy-pdfjs')
+        expect(pkg.scripts.postinstall).toBe(
+            'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs'
+        )
     })
 
     it('does not overwrite an existing .npmrc', () => {
@@ -109,10 +126,10 @@ describe('writeWorkspaceManifest', () => {
         expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toBe('custom-setting=true\n')
     })
 
-    it('writes the default .npmrc when none exists', () => {
+    it('writes a minimal .npmrc (pnpm settings live in pnpm-workspace.yaml) when none exists', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
-        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('legacy-peer-deps=true')
+        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('pnpm-workspace.yaml')
     })
 })
 
@@ -128,6 +145,7 @@ describe('copyWorkspaceTemplate', () => {
             '.go-version',
             'tinycld.packages.ts',
             'vitest.config.ts',
+            join('scripts', 'link-members.ts'),
             join('tests', 'expo-clipboard-stub.ts'),
             join('tests', 'expo-router-stub.ts'),
             join('tests', 'lucide-react-native-stub.cjs'),
