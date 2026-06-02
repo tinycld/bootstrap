@@ -19,8 +19,8 @@ The two modes are independent — scaffold mode does not require a pre-existing 
 ```sh
 mkdir ~/code/tinycld && cd ~/code/tinycld
 npx @tinycld/bootstrap@latest --assemble-only --with mail --with contacts
-npm install                  # links members + runs the generator (postinstall)
-cd app && npm run dev
+pnpm install                  # links members + runs the generator (postinstall)
+cd app && pnpm run dev
 ```
 
 The CLI writes the workspace coordination files (`package.json`, `tinycld.packages.ts`, `vitest.config.ts`, shared test stubs, the `package-scripts/` CLI) from embedded templates, then clones `app` + `core` as siblings. Each `--with <slug>` adds one feature sibling. `app` and `core` are always cloned; everything else is opt-in.
@@ -64,7 +64,7 @@ If `--new` runs from inside an existing workspace root (`app/` and `core/` sibli
 | **Keyboard shortcut** (full only) | `f` | Single lowercase letter, or blank. |
 | **Include a Go server?** (full only) | `y` / `n` | If no, `server/` and the manifest's `server` field are omitted. |
 | **Target directory** | `./my-feature` | Default creates the new repo as a child of the current directory. Must not exist or must be empty. |
-| **Link into the workspace?** | `y` / `n` | After scaffolding, the CLI adds the package to the workspace `package.json`'s `workspaces` array and runs `npm install` at the workspace root. If cwd isn't a workspace root, it assembles one (cloning `app` + `core`) first. Suppress with `--no-link`. |
+| **Link into the workspace?** | `y` / `n` | After scaffolding, the CLI adds the package to `pnpm-workspace.yaml`'s `packages:` list (and the `package.json` `workspaces` hint) and runs `pnpm install` at the workspace root. If cwd isn't a workspace root, it assembles one (cloning `app` + `core`) first. Suppress with `--no-link`. |
 
 ### Flags (non-interactive use)
 
@@ -186,7 +186,7 @@ All path-shaped fields use **short subpaths** (`'screens'`, `'sidebar'`, `'colle
 
 ## After scaffolding
 
-If you accepted the link-into-workspace prompt, the package is already a workspace member and `npm install` has run. Otherwise the CLI prints next-steps you can copy verbatim:
+If you accepted the link-into-workspace prompt, the package is already a workspace member and `pnpm install` has run. Otherwise the CLI prints next-steps you can copy verbatim:
 
 ```sh
 # 1. Initialize git and push to GitHub
@@ -198,17 +198,17 @@ gh repo create tinycld/my-feature --public --source=. --push
 
 # 2. Link into the workspace (add as a member, then install)
 cd ..
-# ensure "my-feature" is listed in the workspace package.json's "workspaces" array, then:
-npm install
+# ensure "my-feature" is listed in pnpm-workspace.yaml's "packages:" list, then:
+pnpm install
 
 # 3. Verify (scoped to this member)
 cd my-feature
-npx tinycld-pkg check
+pnpm exec tinycld-pkg check
 ```
 
 Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to `app/` or `core/` are needed.
 
-> ⚠️ **`app/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `npm run dev` is already running, restart it (Ctrl-C, then `npm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
+> ⚠️ **`app/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `pnpm run dev` is already running, restart it (Ctrl-C, then `pnpm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
 
 ### Day-to-day development
 
@@ -216,17 +216,17 @@ Most work happens **from inside the package** with the workspace assembled aroun
 
 ```sh
 cd my-feature
-npx tinycld-pkg check        # biome + tsc + vitest, scoped to this member
-npx tinycld-pkg test         # vitest only
-npx tinycld-pkg test:e2e     # playwright for this member
+pnpm exec tinycld-pkg check        # biome + tsc + vitest, scoped to this member
+pnpm exec tinycld-pkg test         # vitest only
+pnpm exec tinycld-pkg test:e2e     # playwright for this member
 ```
 
 To run the app itself, drop into the app shell:
 
 ```sh
 cd ../app
-npm run dev                  # expo + pocketbase, fronted by a single-port dev proxy
-npm run checks               # biome + tsc, ecosystem-wide
+pnpm run dev                  # expo + pocketbase, fronted by a single-port dev proxy
+pnpm run checks               # biome + tsc, ecosystem-wide
 ```
 
 Hot reload picks up changes in your package the same way as core code, since members are symlinked.
@@ -236,9 +236,9 @@ Hot reload picks up changes in your package the same way as core code, since mem
 The package's `.github/workflows/ci.yml` mirrors what GitHub Actions runs:
 
 1. Assemble a workspace via `npx @tinycld/bootstrap --assemble-only`. The job has `--with <this-pkg>@<sha>` so it lands the exact commit under test.
-2. `npm install` at the workspace root (this also runs the package generator via the postinstall hook).
-3. `npx tinycld-pkg check` from inside the package directory — runs biome (scoped), tsc, and vitest.
-4. `npx tinycld-pkg test:e2e` if the package ships Playwright specs under `tests/`.
+2. `pnpm install` at the workspace root (this also runs the package generator via the postinstall hook).
+3. `pnpm exec tinycld-pkg check` from inside the package directory — runs biome (scoped), tsc, and vitest.
+4. `pnpm exec tinycld-pkg test:e2e` if the package ships Playwright specs under `tests/`.
 
 Biome lives only in `app/biome.json` (one config across every member). There is no `biome.json` in the scaffolded package repo. Typecheck runs against the app shell's tsconfig via `tinycld-pkg`, so the `expo` base, `uniwind` global augments, and the live `pbSchema` types are all in scope.
 
@@ -303,13 +303,13 @@ Adding a new placeholder requires one line in `src/substitute.ts`'s `buildPlaceh
 ### Local development of the scaffolder itself
 
 ```sh
-npm install
-npm run dev my-feature --target /tmp/scratch       # tsx live-runs src/index.ts
-npm run lint                                       # biome
-npm run typecheck                                  # tsc --noEmit
-npm run checks                                     # both of the above
-npm run test                                       # vitest: substitute + validate + end-to-end scaffold into tmpdir
-npm run build                                      # compile src/ → dist/ (what gets published)
+pnpm install
+pnpm run dev my-feature --target /tmp/scratch       # tsx live-runs src/index.ts
+pnpm run lint                                       # biome
+pnpm run typecheck                                  # tsc --noEmit
+pnpm run checks                                     # both of the above
+pnpm run test                                       # vitest: substitute + validate + end-to-end scaffold into tmpdir
+pnpm run build                                      # compile src/ → dist/ (what gets published)
 ```
 
 The scaffolder tests invoke `copyTemplate` into a tmp directory and assert the expected tree, file contents, and placeholder substitutions for both presets. The end-to-end flow (link into a real `tinycld/` checkout and boot the dev server) is covered manually — see git history for the validation playbook.
@@ -326,7 +326,7 @@ git push --tags
 
 Publishing needs an `NPM_TOKEN` repo secret (npm "automation" token scoped to `@tinycld`). Add it once at Settings → Secrets → Actions.
 
-`prepublishOnly` runs `npm run checks && npm run test && npm run build` before any publish, so a broken tree never reaches npm.
+`prepublishOnly` runs `pnpm run checks && pnpm run test && pnpm run build` before any publish, so a broken tree never reaches npm.
 
 ## Design notes
 

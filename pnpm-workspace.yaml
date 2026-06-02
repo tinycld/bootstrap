@@ -1,0 +1,11 @@
+# @tinycld/bootstrap is a STANDALONE pnpm project (not part of the tinycld
+# workspace it scaffolds). This file's presence makes pnpm treat this dir as its
+# own workspace root, so a `pnpm install` here doesn't walk up into the parent
+# tinycld workspace when bootstrap is developed inside ~/code/tinycld/bootstrap.
+# It has no `packages:` list — bootstrap is a single package, not a monorepo.
+#
+# esbuild ships a postinstall that fetches its native binary (vitest pulls it in
+# transitively); allow that build. pnpm 10+ reads build-script approvals here,
+# not from the old package.json "pnpm.onlyBuiltDependencies" field.
+allowBuilds:
+  esbuild: true

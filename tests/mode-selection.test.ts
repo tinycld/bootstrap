@@ -44,19 +44,21 @@ describe('resolveMode', () => {
 
 describe('composeAssembleOutro', () => {
     it('lists no extras when --with was not used', () => {
-        expect(composeAssembleOutro(undefined)).toBe('Workspace assembled (app + core). Run `npm install` at the root.')
+        expect(composeAssembleOutro(undefined)).toBe(
+            'Workspace assembled (app + core). Run `pnpm install` at the root.'
+        )
     })
     it('lists no extras when --with was empty', () => {
-        expect(composeAssembleOutro([])).toBe('Workspace assembled (app + core). Run `npm install` at the root.')
+        expect(composeAssembleOutro([])).toBe('Workspace assembled (app + core). Run `pnpm install` at the root.')
     })
     it('appends a single --with member', () => {
         expect(composeAssembleOutro(['mail'])).toBe(
-            'Workspace assembled (app + core, mail). Run `npm install` at the root.'
+            'Workspace assembled (app + core, mail). Run `pnpm install` at the root.'
         )
     })
     it('appends multiple --with members separated by commas', () => {
         expect(composeAssembleOutro(['mail', 'contacts'])).toBe(
-            'Workspace assembled (app + core, mail, contacts). Run `npm install` at the root.'
+            'Workspace assembled (app + core, mail, contacts). Run `pnpm install` at the root.'
         )
     })
 })

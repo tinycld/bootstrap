@@ -9,9 +9,9 @@ test-results/
 # Per-developer Claude Code workspace (session worktrees, scratch files).
 .claude/
 
-# Non-npm lockfiles. This package is published to npm and ships
-# package-lock.json — anything else is from a contributor running
-# bun/pnpm/yarn locally and shouldn't be committed.
+# Other package managers' lockfiles. This package is managed with pnpm and
+# ships a committed pnpm-lock.yaml — anything else is from a contributor running
+# npm/bun/yarn locally and shouldn't be committed.
 bun.lock
-pnpm-lock.yaml
+package-lock.json
 yarn.lock

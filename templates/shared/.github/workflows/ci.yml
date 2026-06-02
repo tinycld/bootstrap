@@ -41,12 +41,18 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: ws/.go-version
+      # 5. Enable corepack so the pnpm version pinned in the workspace root's
+      #    package.json "packageManager" field is used. pnpm discovers members
+      #    from pnpm-workspace.yaml; node-linker=hoisted (set there) gives an
+      #    npm-like flat node_modules so member peerDeps resolve.
+      - name: Enable corepack (pnpm)
+        run: corepack enable
       - name: Install (workspace root)
         working-directory: ws
-        run: npm install
+        run: pnpm install --no-frozen-lockfile
       - name: Typecheck + unit
         working-directory: ws/${{ env.PACKAGE }}
-        run: npx tinycld-pkg check
+        run: pnpm exec tinycld-pkg check
 
   e2e:
     name: E2E
@@ -70,9 +76,11 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: ws/.go-version
+      - name: Enable corepack (pnpm)
+        run: corepack enable
       - name: Install (workspace root)
         working-directory: ws
-        run: npm install
+        run: pnpm install --no-frozen-lockfile
       # Installs watchman so Metro's file watcher doesn't fall back to
       # polling — see tinycld/app#21 for the trace evidence and the
       # blank-page-after-reload flake it fixed.
@@ -80,10 +88,10 @@ jobs:
         uses: tinycld/app/.github/actions/configure-test-env@main
       - name: Install Playwright browsers
         working-directory: ws/app
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       - name: E2E
         working-directory: ws/${{ env.PACKAGE }}
-        run: npx tinycld-pkg test:e2e
+        run: pnpm exec tinycld-pkg test:e2e
       # Capture Playwright's per-failure artifacts (trace, screenshot,
       # video, error-context.md) so a CI failure can be diagnosed
       # without a re-run. `if: failure()` skips the upload on green

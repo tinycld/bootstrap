@@ -114,7 +114,7 @@ type Mode = 'assemble-only' | 'new' | 'usage'
 
 export function composeAssembleOutro(members: readonly string[] | undefined): string {
     const extras = members?.length ? `, ${members.join(', ')}` : ''
-    return `Workspace assembled (app + core${extras}). Run \`npm install\` at the root.`
+    return `Workspace assembled (app + core${extras}). Run \`pnpm install\` at the root.`
 }
 
 export function resolveMode(args: ReturnType<typeof parseArgs>): Mode {
@@ -203,25 +203,25 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     lines.push('')
 
     if (!linked) {
-        // Linking is now a workspace-root `npm install`: the package dir already
-        // exists; add it to the root package.json `workspaces` if it isn't a
-        // member yet, then install — npm symlinks it and the postinstall runs
-        // the generator.
+        // Linking is now a workspace-root `pnpm install`: the package dir already
+        // exists; add it to pnpm-workspace.yaml's `packages:` if it isn't a
+        // member yet, then install — the postinstall runs link-members (which
+        // symlinks it) and the generator.
         lines.push(`  ${pc.dim(`# ${step++}. Link into the workspace (add as a member, then install)`)}`)
         if (wsRoot !== '.') lines.push(`  cd ${wsRoot}`)
-        lines.push(`  # ensure "${slug}" is in this package.json's "workspaces" array, then:`)
-        lines.push('  npm install')
+        lines.push(`  # ensure "${slug}" is in pnpm-workspace.yaml's "packages:" list, then:`)
+        lines.push('  pnpm install')
         lines.push('')
     }
 
     lines.push(`  ${pc.dim(`# ${step++}. Verify the package (biome + tsc, scoped to this member)`)}`)
     lines.push(`  cd ${join(wsRoot, slug)}`)
-    lines.push('  npx tinycld-pkg check')
+    lines.push('  pnpm exec tinycld-pkg check')
     lines.push('')
 
     lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase, single-port dev proxy)`)}`)
     lines.push(`  cd ${join(wsRoot, 'app')}`)
-    lines.push('  npm run dev')
+    lines.push('  pnpm run dev')
     lines.push('')
 
     console.log(lines.join('\n'))

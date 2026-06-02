@@ -25,22 +25,48 @@ export interface LinkPackageInput {
      * `TINYCLD_REPO_BASE` so keyless/HTTPS environments work.
      */
     assemble?: (dir: string, members?: readonly string[]) => void
-    /** Injected for tests; defaults to a real `npm install`. */
+    /** Injected for tests; defaults to a real `pnpm install`. */
     install?: (cwd: string) => boolean
 }
 
 /**
- * Add `slug` to `<workspaceDir>/package.json` `workspaces[]` if it isn't already
- * there. Idempotent, and a no-op when there's no package.json yet.
+ * Make `slug` a workspace member: add it to pnpm-workspace.yaml's `packages:`
+ * list (the source pnpm reads) and to the package.json `workspaces[]` tooling
+ * hint. Idempotent; each file is a no-op when absent or already listing the slug.
  */
 export function ensureMember(workspaceDir: string, slug: string): void {
     const pkgPath = join(workspaceDir, 'package.json')
-    if (!existsSync(pkgPath)) return
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
-    pkg.workspaces = Array.isArray(pkg.workspaces) ? pkg.workspaces : []
-    if (!pkg.workspaces.includes(slug)) {
-        pkg.workspaces.push(slug)
-        writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`)
+    if (existsSync(pkgPath)) {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+        pkg.workspaces = Array.isArray(pkg.workspaces) ? pkg.workspaces : []
+        if (!pkg.workspaces.includes(slug)) {
+            pkg.workspaces.push(slug)
+            writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`)
+        }
+    }
+
+    const wsYamlPath = join(workspaceDir, 'pnpm-workspace.yaml')
+    if (existsSync(wsYamlPath)) {
+        const yaml = readFileSync(wsYamlPath, 'utf-8')
+        // Already a member? (matches `  - <slug>` under packages:)
+        const memberLine = new RegExp(`^\\s*-\\s+${slug}\\s*$`, 'm')
+        if (!memberLine.test(yaml)) {
+            // Append the slug to the packages: block. The block runs from the
+            // `packages:` line until the next top-level key or EOF; insert after
+            // the last `  - ` entry within it.
+            const lines = yaml.split('\n')
+            const pkgIdx = lines.findIndex((l) => /^packages:\s*$/.test(l))
+            if (pkgIdx !== -1) {
+                let lastEntry = pkgIdx
+                for (let i = pkgIdx + 1; i < lines.length; i++) {
+                    const line = lines[i] ?? ''
+                    if (/^\s+-\s+/.test(line)) lastEntry = i
+                    else if (/^\S/.test(line) && line.trim() !== '') break
+                }
+                lines.splice(lastEntry + 1, 0, `  - ${slug}`)
+                writeFileSync(wsYamlPath, lines.join('\n'))
+            }
+        }
     }
 }
 
@@ -48,9 +74,10 @@ export function ensureMember(workspaceDir: string, slug: string): void {
  * Offer to link the freshly-scaffolded package into the TinyCld workspace.
  *
  * "Linking" in the workspace layout means: make the package a workspace member
- * (its dir name appears in the root `package.json` `workspaces[]`) and run
- * `npm install` at the workspace root — npm creates the `node_modules/@tinycld/*`
- * symlink and the root `postinstall` runs the generator.
+ * (its dir name appears in pnpm-workspace.yaml — and, as a tooling hint, the
+ * root `package.json` `workspaces[]`) and run `pnpm install` at the workspace
+ * root. The root `postinstall` runs link-members (which creates the
+ * `node_modules/@tinycld/*` symlinks) and the generator.
  *
  * Two shapes, distinguished by whether `workspaceDir` is already a workspace root:
  *   - attach: `workspaceDir` is already an assembled workspace root (its
@@ -112,9 +139,9 @@ export async function offerLinkPackage({
     ensureMember(workspaceDir, slug)
 
     const i = spinner()
-    i.start('Installing workspace (npm install)')
+    i.start('Installing workspace (pnpm install)')
     if (!install(workspaceDir)) {
-        i.stop(pc.red('npm install failed'), 1)
+        i.stop(pc.red('pnpm install failed'), 1)
         return true
     }
     i.stop('Installed workspace')
@@ -140,9 +167,13 @@ function realAssemble(dir: string, members?: readonly string[]): void {
 }
 
 function realInstall(cwd: string): boolean {
-    const r = spawnSync('npm', ['install'], { cwd, stdio: 'pipe', encoding: 'utf8' })
+    // corepack enable makes the pnpm version pinned in package.json's
+    // packageManager field available, then install via pnpm. The workspace is a
+    // pnpm workspace (pnpm-workspace.yaml); npm is no longer used to install.
+    spawnSync('corepack', ['enable'], { cwd, stdio: 'pipe', encoding: 'utf8' })
+    const r = spawnSync('pnpm', ['install'], { cwd, stdio: 'pipe', encoding: 'utf8' })
     if (r.status !== 0) {
-        log.error(r.stderr?.trim() || 'npm install exited non-zero')
+        log.error(r.stderr?.trim() || 'pnpm install exited non-zero')
         return false
     }
     return true

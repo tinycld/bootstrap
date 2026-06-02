@@ -11,7 +11,7 @@ not bundled), and the other feature packages.
 
 The package is one member of a tinycld workspace. To work on it you need a
 workspace root containing at least `app`, `core`, and this package as siblings,
-linked by a single `npm install` at the root.
+linked by a single `pnpm install` at the root.
 
 ```sh
 # In a fresh workspace directory, clone this package into a member slot…
@@ -24,11 +24,11 @@ npx @tinycld/bootstrap@latest --assemble-only
 
 # Link every member with one install at the WORKSPACE ROOT (never inside a
 # member — siblings have no node_modules of their own; deps hoist to the root).
-npm install
+pnpm install
 
 # Run the full stack (Expo + PocketBase, single-port dev proxy) from the app.
 cd app
-npm run dev
+pnpm run dev
 ```
 
 ## Checks
@@ -39,9 +39,9 @@ app shell's biome config, tsconfig base, and vitest/playwright configs (so
 
 ```sh
 cd {{PKG_SLUG}}
-npx tinycld-pkg check       # biome + typecheck
-npx tinycld-pkg test        # vitest unit tests
-npx tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
+pnpm exec tinycld-pkg check       # biome + typecheck
+pnpm exec tinycld-pkg test        # vitest unit tests
+pnpm exec tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
 ```
 
 There is no `biome.json` in this repo — biome lives only in the app shell and
