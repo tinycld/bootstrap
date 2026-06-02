@@ -19,6 +19,37 @@ const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', '
 const ALL_MEMBERS = ['app', 'app/package-scripts', 'core', ...ALL_FEATURES] as const
 
 /**
+ * Direct child dirs of `root` that look like a feature member already on disk:
+ * a package.json plus a manifest.ts/js. This mirrors the app generator's own
+ * discovery (it scans the workspace root for manifest-bearing members), so the
+ * `workspaces` array stays in sync with what the generator will try to load.
+ *
+ * The motivating case is CI / a custom package: a member checked out into its
+ * slot but absent from ALL_FEATURES is discovered by the generator yet never
+ * linked by npm (→ "No manifest found"). Self-registering it here closes that
+ * gap without requiring every package to be hardcoded in ALL_FEATURES.
+ */
+function discoverPresentMembers(root: string): string[] {
+    let entries: string[]
+    try {
+        entries = readdirSync(root)
+    } catch {
+        return []
+    }
+    return entries.filter((name) => {
+        if (name === 'node_modules' || name.startsWith('.')) return false
+        const dir = join(root, name)
+        try {
+            if (!statSync(dir).isDirectory()) return false
+        } catch {
+            return false
+        }
+        const hasManifest = existsSync(join(dir, 'manifest.ts')) || existsSync(join(dir, 'manifest.js'))
+        return existsSync(join(dir, 'package.json')) && hasManifest
+    })
+}
+
+/**
  * Write (or merge into) a workspace-root package.json + .npmrc in `dir`.
  *
  * When `dir/package.json` already exists (e.g. provided by the workspace clone),
@@ -58,7 +89,10 @@ export function writeWorkspaceManifest(dir: string): void {
         type: 'module',
         ...existing,
         // Always enforce the canonical workspaces list and postinstall script.
-        workspaces: [...ALL_MEMBERS],
+        // Union in any manifest-bearing member already on disk (e.g. a CI- or
+        // custom-package checkout not in ALL_FEATURES) so npm links what the
+        // generator discovers.
+        workspaces: [...new Set([...ALL_MEMBERS, ...discoverPresentMembers(dir)])],
         scripts: {
             ...existingScripts,
             postinstall: 'cd app && npm run packages:generate && npm run assets:copy-pdfjs',

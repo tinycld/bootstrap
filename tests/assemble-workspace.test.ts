@@ -39,6 +39,23 @@ describe('writeWorkspaceManifest', () => {
         }
     })
 
+    it('self-registers a manifest-bearing member present on disk but absent from ALL_FEATURES', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        // Simulate a CI / custom-package checkout: a member dir with a
+        // package.json + manifest.ts that bootstrap doesn't know about.
+        mkdirSync(join(dir, 'calendar-slots'))
+        writeFileSync(join(dir, 'calendar-slots', 'package.json'), JSON.stringify({ name: '@tinycld/calendar-slots' }))
+        writeFileSync(join(dir, 'calendar-slots', 'manifest.ts'), 'export default {}')
+        // A non-member dir (no manifest) must NOT be registered.
+        mkdirSync(join(dir, 'scratch'))
+        writeFileSync(join(dir, 'scratch', 'package.json'), JSON.stringify({ name: 'scratch' }))
+        writeWorkspaceManifest(dir)
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        expect(pkg.workspaces).toContain('calendar-slots')
+        expect(pkg.workspaces).not.toContain('scratch')
+        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
+    })
+
     it('writes an .npmrc with legacy-peer-deps', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
