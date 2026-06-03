@@ -50,6 +50,30 @@ describe('writeWorkspaceManifest', () => {
         expect(yaml).toContain('  - core')
     })
 
+    it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        // Simulate a CI / custom-package checkout: a member dir with a
+        // package.json + manifest.ts that bootstrap doesn't know about.
+        mkdirSync(join(dir, 'calendar-slots'))
+        writeFileSync(join(dir, 'calendar-slots', 'package.json'), JSON.stringify({ name: '@tinycld/calendar-slots' }))
+        writeFileSync(join(dir, 'calendar-slots', 'manifest.ts'), 'export default {}')
+        // A non-member dir (no manifest) must NOT be registered.
+        mkdirSync(join(dir, 'scratch'))
+        writeFileSync(join(dir, 'scratch', 'package.json'), JSON.stringify({ name: 'scratch' }))
+        writeWorkspaceManifest(dir)
+
+        // Authoritative source pnpm reads: the member must land in pnpm-workspace.yaml.
+        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+        expect(yaml).toContain('  - calendar-slots')
+        expect(yaml).not.toContain('  - scratch')
+
+        // The package.json `workspaces` hint stays in sync (no duplicates).
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+        expect(pkg.workspaces).toContain('calendar-slots')
+        expect(pkg.workspaces).not.toContain('scratch')
+        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
+    })
+
     it('pins packageManager + adds the tsx devDep', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
