@@ -24,14 +24,51 @@ const ALL_MEMBERS = ['app', 'app/package-scripts', 'core', ...ALL_FEATURES] as c
 const PNPM_VERSION = '11.3.0'
 
 /**
+ * Direct child dirs of `root` that look like a feature member already on disk:
+ * a package.json plus a manifest.ts/js. This mirrors the app generator's own
+ * discovery (it scans the workspace root for manifest-bearing members), so the
+ * member list bootstrap writes stays in sync with what the generator will load.
+ *
+ * The motivating case is CI / a custom package: a member checked out into its
+ * slot but absent from ALL_MEMBERS is discovered by the generator yet never
+ * linked by pnpm (→ "No manifest found"). Self-registering it here closes that
+ * gap without requiring every package to be hardcoded in ALL_FEATURES.
+ */
+function discoverPresentMembers(root: string): string[] {
+    let entries: string[]
+    try {
+        entries = readdirSync(root)
+    } catch {
+        return []
+    }
+    return entries.filter((name) => {
+        if (name === 'node_modules' || name.startsWith('.')) return false
+        const dir = join(root, name)
+        try {
+            if (!statSync(dir).isDirectory()) return false
+        } catch {
+            return false
+        }
+        const hasManifest = existsSync(join(dir, 'manifest.ts')) || existsSync(join(dir, 'manifest.js'))
+        return existsSync(join(dir, 'package.json')) && hasManifest
+    })
+}
+
+/**
  * pnpm-workspace.yaml contents: member discovery list + the settings the
  * ecosystem depends on. node-linker=hoisted reproduces npm's flat node_modules
  * so feature siblings (peerDeps-only, no node_modules of their own) resolve
  * react/expo/etc. up to the root, and Metro/tsc resolution work unchanged.
  * pnpm 10+ reads these keys from THIS file, not .npmrc.
+ *
+ * `dir` is the workspace root: any manifest-bearing member already on disk but
+ * not in ALL_MEMBERS (a CI- or custom-package checkout) is unioned into the
+ * `packages:` list so pnpm links what the generator discovers. This list is the
+ * source of truth pnpm reads — unlike the package.json `workspaces` hint.
  */
-function pnpmWorkspaceYaml(): string {
-    const members = ALL_MEMBERS.map((m) => `  - ${m}`).join('\n')
+function pnpmWorkspaceYaml(dir: string): string {
+    const allMembers = [...new Set([...ALL_MEMBERS, ...discoverPresentMembers(dir)])]
+    const members = allMembers.map((m) => `  - ${m}`).join('\n')
     return [
         'nodeLinker: hoisted',
         'linkWorkspacePackages: true',
@@ -92,8 +129,10 @@ export function writeWorkspaceManifest(dir: string): void {
         ...existing,
         packageManager: `pnpm@${PNPM_VERSION}`,
         // Monorepo-detection hint for external tooling (see doc comment); pnpm
-        // itself reads members from pnpm-workspace.yaml and ignores this.
-        workspaces: [...ALL_MEMBERS],
+        // itself reads members from pnpm-workspace.yaml and ignores this. Union
+        // in any manifest-bearing member already on disk so the hint matches the
+        // authoritative pnpm-workspace.yaml member list.
+        workspaces: [...new Set([...ALL_MEMBERS, ...discoverPresentMembers(dir)])],
         scripts: {
             ...existingScripts,
             postinstall:
@@ -108,7 +147,7 @@ export function writeWorkspaceManifest(dir: string): void {
 
     // pnpm-workspace.yaml is the source of truth for members + settings — always
     // rewrite it (unlike package.json, no human-owned fields live here).
-    writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml())
+    writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(dir))
 
     // Minimal .npmrc: all pnpm settings live in pnpm-workspace.yaml (pnpm 10+
     // reads them there, not from .npmrc). Only written when absent (don't
