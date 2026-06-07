@@ -166,6 +166,33 @@ export function writeWorkspaceManifest(dir: string): void {
     if (!existsSync(npmrcPath)) {
         writeFileSync(npmrcPath, '# pnpm settings live in pnpm-workspace.yaml (pnpm 10+ reads them there).\n')
     }
+
+    writeRootBiomeConfig(dir)
+}
+
+/**
+ * Write the workspace-root biome.json. Biome searches only UPWARD for config,
+ * and the canonical biome.json lives at <root>/tinycld/ — a SIBLING of the
+ * feature members, never an ancestor. Without a root config, running biome from
+ * inside a member (or via the editor/LSP) finds nothing and falls back to
+ * biome's built-in defaults, flooding output with bogus reformatting. This
+ * minimal `root: true` config extends the canonical one (which is `root: false`)
+ * so it's resolvable from anywhere. Members may add their own `root: false`
+ * biome.json extending canonical to override rules; most don't.
+ *
+ * Seeded here so a freshly-assembled root lints before its first install. The
+ * generator also writes it on every install (the canonical config's `root:
+ * false` ships via the tinycld repo and breaks `pnpm run lint` if no root config
+ * sits above it), so this is the belt to the generator's suspenders. Content is
+ * static, so always rewrite.
+ */
+function writeRootBiomeConfig(root: string): void {
+    const config = {
+        $schema: 'https://biomejs.dev/schemas/2.4.16/schema.json',
+        root: true,
+        extends: ['./tinycld/biome.json'],
+    }
+    writeFileSync(join(root, 'biome.json'), `${JSON.stringify(config, null, 4)}\n`)
 }
 
 /**

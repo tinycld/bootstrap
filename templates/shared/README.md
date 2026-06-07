@@ -44,8 +44,20 @@ pnpm exec tinycld-pkg test        # vitest unit tests
 pnpm exec tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
 ```
 
-There is no `biome.json` in this repo — biome lives only in the app shell and
-`tinycld-pkg` points it at this member's source.
+This repo ships no `biome.json` — it inherits the ecosystem-wide rules through
+the workspace-root config (which extends the app shell's canonical `biome.json`),
+so `biome check .` from inside this member, single-file checks, and the editor's
+biome LSP all resolve the right rules. Add a `biome.json` here only if this
+package genuinely needs to override a rule:
+
+```jsonc
+{
+    "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+    "root": false,
+    "extends": ["../tinycld/biome.json"],
+    "linter": { "rules": { /* your overrides */ } }
+}
+```
 
 ## CI
 

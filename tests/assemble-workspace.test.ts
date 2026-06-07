@@ -156,6 +156,14 @@ describe('writeWorkspaceManifest', () => {
         writeWorkspaceManifest(dir)
         expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('pnpm-workspace.yaml')
     })
+
+    it('writes a root biome.json that extends the canonical config (so biome is resolvable from any member)', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
+        expect(biome.root).toBe(true)
+        expect(biome.extends).toEqual(['./tinycld/biome.json'])
+    })
 })
 
 describe('copyWorkspaceTemplate', () => {
