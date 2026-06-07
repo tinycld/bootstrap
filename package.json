@@ -26,7 +26,8 @@
         "lint:fix": "biome check --write .",
         "typecheck": "tsc --noEmit",
         "checks": "pnpm run lint && pnpm run typecheck",
-        "test": "vitest run",
+        "test": "vitest run --exclude '**/tests/integration/**'",
+        "test:integration": "vitest run tests/integration",
         "prepublishOnly": "pnpm run checks && pnpm run test && pnpm run build",
         "release": "pnpm publish"
     },

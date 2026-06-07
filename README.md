@@ -116,7 +116,7 @@ my-feature/
 ├── README.md                           # developer-facing onboarding for this package
 ├── manifest.ts                         # name, slug, routes, nav, collections, seed, server, ...
 ├── package.json                        # @tinycld/my-feature, peer deps, scripts, exports map
-├── tsconfig.json                       # extends ../app/tsconfig.package-base.json
+├── tsconfig.json                       # extends @tinycld/core/tsconfig.package-base.json (by name)
 ├── pb-migrations/
 │   └── 1800000000_create_my-feature.js # creates my_feature_items collection
 ├── server/

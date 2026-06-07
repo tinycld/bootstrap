@@ -48,6 +48,19 @@ export function getPackages(): string[] {
             }
             if (hasManifest(dir)) features.push(name)
         }
+
+        // @tinycld/core moved INSIDE the tinycld member (at <wsRoot>/tinycld/core/);
+        // the top-level scan above won't see it. Look for it explicitly so it is
+        // still listed first.
+        if (!core) {
+            const nestedCorePkg = path.join(wsRoot, 'tinycld', 'core', 'package.json')
+            try {
+                const name = JSON.parse(fs.readFileSync(nestedCorePkg, 'utf8')).name
+                if (name === CORE_NAME) core = name
+            } catch {
+                // no nested core present — fine for feature-only test trees
+            }
+        }
     }
 
     features.sort()

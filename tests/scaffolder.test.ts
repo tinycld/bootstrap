@@ -197,16 +197,18 @@ describe('copyTemplate — full preset', () => {
         expect(pkg.exports['./screens/*']).toBe('./tinycld/my-feature/screens/*.tsx')
     })
 
-    it('tsconfig.json declares the new path aliases', () => {
+    it('tsconfig.json is location-independent (extends core by package name)', () => {
         const target = scaffold()
         const ts = JSON.parse(readFileSync(join(target, 'tsconfig.json'), 'utf8'))
-        // Extends the app shell's package tsconfig base (noEmit etc. inherited).
-        expect(ts.extends).toBe('../app/tsconfig.package-base.json')
-        // Core is a standalone sibling member at ../core/.
-        expect(ts.compilerOptions.paths['@tinycld/core/*']).toEqual(['../core/*'])
-        expect(ts.compilerOptions.paths['@tinycld/app-generated/*']).toEqual(['../app/lib/generated/*'])
-        // Cross-sibling imports aren't supported — no @tinycld/* alias.
+        // Extends core's shared base BY PACKAGE NAME — no path into the app shell.
+        expect(ts.extends).toBe('@tinycld/core/tsconfig.package-base.json')
+        // No path points outside the package dir.
+        expect(JSON.stringify(ts)).not.toMatch(/\.\.\/(tinycld|app|core|drive)/)
+        // @tinycld/* deps resolve by name via symlinks + exports — no tsconfig paths.
+        expect(ts.compilerOptions.paths['@tinycld/core/*']).toBeUndefined()
+        expect(ts.compilerOptions.paths['@tinycld/app-generated/*']).toBeUndefined()
         expect(ts.compilerOptions.paths['@tinycld/*']).toBeUndefined()
+        // The only path is the package's own self-alias.
         expect(ts.compilerOptions.paths['~/tinycld/my-feature/*']).toEqual(['./tinycld/my-feature/*'])
         // Old-layout artifacts are gone.
         expect(ts.compilerOptions.paths['~/*']).toBeUndefined()

@@ -13,20 +13,18 @@ import { runPrompts } from './prompts.ts'
 
 export function runAssembleOnly(opts: AssembleWorkspaceOptions): void {
     const root = opts.root ?? process.cwd()
-    // app + core are always-cloned members, not features, so they can't ride the
-    // `members` list through assembleWorkspace's feature validation. Accept them
-    // in the SAME `--with name@ref` surface for a uniform pinned invocation
-    // (`--with app@v1 --with core@v2 --with mail@v3`) by peeling app@ref/core@ref
-    // out of `members` into appRef/coreRef. An explicit opts.appRef/coreRef wins.
-    let appRef = opts.appRef
-    let coreRef = opts.coreRef
+    // `tinycld` (the merged app shell + core) is the always-cloned member, not a
+    // feature, so it can't ride the `members` list through assembleWorkspace's
+    // feature validation. Accept it in the SAME `--with name@ref` surface for a
+    // uniform pinned invocation (`--with tinycld@v1 --with mail@v3`) by peeling
+    // tinycld@ref out of `members` into tinycldRef. An explicit opts.tinycldRef wins.
+    let tinycldRef = opts.tinycldRef
     const features: string[] = []
     for (const spec of opts.members ?? []) {
         const at = spec.indexOf('@')
         const name = at === -1 ? spec : spec.slice(0, at)
         const ref = at === -1 ? undefined : spec.slice(at + 1) || undefined
-        if (name === 'app') appRef = appRef ?? ref
-        else if (name === 'core') coreRef = coreRef ?? ref
+        if (name === 'tinycld') tinycldRef = tinycldRef ?? ref
         else features.push(spec)
     }
     // Honor TINYCLD_REPO_BASE (CI sets it to an HTTPS base since runners have no
@@ -36,15 +34,12 @@ export function runAssembleOnly(opts: AssembleWorkspaceOptions): void {
         repoBase: process.env.TINYCLD_REPO_BASE,
         ...opts,
         members: features,
-        appRef,
-        coreRef,
+        tinycldRef,
         root,
     })
-    // Mandatory members must clone — a missing app/core means a broken workspace.
-    for (const required of ['app', 'core']) {
-        if (!present.includes(required)) {
-            throw new Error(`Failed to clone required member '${required}'. Check network/auth and retry.`)
-        }
+    // The mandatory member must clone — a missing tinycld means a broken workspace.
+    if (!present.includes('tinycld')) {
+        throw new Error("Failed to clone required member 'tinycld'. Check network/auth and retry.")
     }
     console.log(`Workspace skeleton ready at ${root} (members: ${present.join(', ')})`)
 }
@@ -114,7 +109,7 @@ type Mode = 'assemble-only' | 'new' | 'usage'
 
 export function composeAssembleOutro(members: readonly string[] | undefined): string {
     const extras = members?.length ? `, ${members.join(', ')}` : ''
-    return `Workspace assembled (app + core${extras}). Run \`pnpm install\` at the root.`
+    return `Workspace assembled (tinycld${extras}). Run \`pnpm install\` at the root.`
 }
 
 export function resolveMode(args: ReturnType<typeof parseArgs>): Mode {
@@ -134,7 +129,7 @@ function printUsage(): void {
         '',
         pc.bold('Modes (one is required):'),
         `  ${pc.cyan('--new <slug>')}           Scaffold a new feature package.`,
-        `  ${pc.cyan('--assemble-only')}        Assemble a workspace root (clones app + core + --with features).`,
+        `  ${pc.cyan('--assemble-only')}        Assemble a workspace root (clones tinycld + --with features).`,
         '',
         pc.bold('Examples:'),
         '  npx @tinycld/bootstrap --new my-feature',
@@ -189,7 +184,7 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
         // New users may not realize they just got a self-contained workspace.
         lines.push(
             pc.dim(
-                `  Scaffolded a self-contained tinycld workspace.\n  The workspace root is ./${wsRoot}/ and your package is ./${relTarget}/.\n  The app member (Expo + PocketBase) is ./${wsRoot}/app/.\n`
+                `  Scaffolded a self-contained tinycld workspace.\n  The workspace root is ./${wsRoot}/ and your package is ./${relTarget}/.\n  The app member (Expo + PocketBase) is ./${wsRoot}/tinycld/.\n`
             )
         )
     }
@@ -220,7 +215,7 @@ function printNextSteps({ slug, relTarget, linked, layout }: NextStepsInput): vo
     lines.push('')
 
     lines.push(`  ${pc.dim(`# ${step++}. Run the app (Expo + PocketBase, single-port dev proxy)`)}`)
-    lines.push(`  cd ${join(wsRoot, 'app')}`)
+    lines.push(`  cd ${join(wsRoot, 'tinycld')}`)
     lines.push('  pnpm run dev')
     lines.push('')
 

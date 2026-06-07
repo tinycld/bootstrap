@@ -17,9 +17,10 @@
 // getPackages() discovers it.
 //
 // Members are linked into BOTH the workspace-root node_modules/@tinycld/ and
-// app/node_modules/@tinycld/. Metro resolves deps from the app shell, so the
-// app-scoped links are the ones that matter for bundling; the root links cover
-// resolution from the workspace root and other members.
+// tinycld/node_modules/@tinycld/. Metro resolves deps from the tinycld member
+// (the app shell), so the tinycld-scoped links are the ones that matter for
+// bundling; the root links cover resolution from the workspace root and other
+// members.
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { getPackages } from '../tinycld.packages'
@@ -42,6 +43,20 @@ function memberDirsByName(): Map<string, string> {
             }
         } catch {
             // not a dir, or no/unreadable package.json — skip
+        }
+    }
+    // @tinycld/core lives nested in the tinycld member (<WS_ROOT>/tinycld/core/);
+    // the top-level scan won't find it. Register it explicitly so the
+    // node_modules/@tinycld/core symlink is still created.
+    if (!index.has('@tinycld/core')) {
+        const nestedCore = path.join(WS_ROOT, 'tinycld', 'core')
+        try {
+            const name = JSON.parse(
+                fs.readFileSync(path.join(nestedCore, 'package.json'), 'utf8')
+            ).name
+            if (name === '@tinycld/core') index.set('@tinycld/core', nestedCore)
+        } catch {
+            // no nested core — skip
         }
     }
     return index
@@ -73,7 +88,7 @@ function main(): void {
     const dirs = memberDirsByName()
     const targets = [
         path.join(WS_ROOT, 'node_modules'),
-        path.join(WS_ROOT, 'app', 'node_modules'),
+        path.join(WS_ROOT, 'tinycld', 'node_modules'),
     ]
 
     let linked = 0
@@ -91,6 +106,21 @@ function main(): void {
         }
         linked++
     }
+
+    // @tinycld/app-generated is NOT a workspace member (it's the generator's
+    // output dir, tinycld/lib/generated/). Link it explicitly so core's
+    // `@tinycld/app-generated/*` imports resolve by name from any consumer that
+    // pulls core in via its exports map. Skip if the generated dir doesn't exist
+    // yet (generator runs in the same postinstall, but ordering/partial runs vary).
+    const appGeneratedDir = path.join(WS_ROOT, 'tinycld', 'lib', 'generated')
+    if (fs.existsSync(appGeneratedDir)) {
+        for (const nm of targets) {
+            if (fs.existsSync(nm)) linkInto(nm, 'app-generated', appGeneratedDir)
+        }
+    } else {
+        console.warn('[link-members] tinycld/lib/generated not present — skipping @tinycld/app-generated link')
+    }
+
     console.log(`[link-members] linked ${linked} workspace member(s) into node_modules/@tinycld/`)
 }
 

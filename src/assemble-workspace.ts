@@ -8,15 +8,16 @@ import { fileURLToPath } from 'node:url'
 // But --assemble-only CLONES only app+core+requested — we do NOT force-clone all.
 const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', 'google-takeout-import'] as const
 
-// app + core are always cloned by assemble-only mode (the minimum viable
-// workspace); the clone set in assembleWorkspace seeds them directly (pinnable
-// via appRef/coreRef). package-scripts (the tinycld-pkg CLI) now lives INSIDE
-// the app member at app/package-scripts, so it arrives with the app clone and
-// is never cloned separately.
+// The `tinycld` member is the one always-cloned repo (tinycld/tinycld): it is
+// the merged app shell + core. assembleWorkspace seeds it directly, pinnable via
+// tinycldRef. Both @tinycld/core (at tinycld/core) and @tinycld/package-scripts
+// (the tinycld-pkg CLI, at tinycld/package-scripts) live NESTED inside it, so
+// they arrive with the single clone and are never cloned separately.
 
 // Listed in the manifest workspaces array (everything that could exist). The
-// nested member path app/package-scripts is a valid npm workspace entry.
-const ALL_MEMBERS = ['app', 'app/package-scripts', 'core', ...ALL_FEATURES] as const
+// nested member paths tinycld/core and tinycld/package-scripts are valid npm
+// workspace entries that resolve inside the one cloned `tinycld` repo.
+const ALL_MEMBERS = ['tinycld', 'tinycld/core', 'tinycld/package-scripts', ...ALL_FEATURES] as const
 
 // pnpm version pinned via the package.json "packageManager" field so corepack
 // resolves the same pnpm everywhere (local, CI, EAS). Bump in lockstep with the
@@ -135,8 +136,17 @@ export function writeWorkspaceManifest(dir: string): void {
         workspaces: [...new Set([...ALL_MEMBERS, ...discoverPresentMembers(dir)])],
         scripts: {
             ...existingScripts,
+            // link-members runs FIRST so the @tinycld/<member> symlinks (notably
+            // @tinycld/core) exist before the generator's package-build step
+            // (text's webview-editor build.ts does a bare `import '@tinycld/core/...'`
+            // resolved by package name, which fails on a CLEAN install if the
+            // symlink isn't there yet). It then runs AGAIN after generate to add
+            // the @tinycld/app-generated link (whose target, tinycld/lib/generated,
+            // only exists once generate has run); link-members is idempotent and
+            // skips app-generated when absent, so the first pass is harmless and
+            // the second completes the graph. All app scripts run from tinycld/.
             postinstall:
-                'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs',
+                'tsx scripts/link-members.ts && cd tinycld && pnpm run packages:generate && cd .. && tsx scripts/link-members.ts && cd tinycld && pnpm run assets:copy-pdfjs',
         },
         devDependencies: {
             ...existingDevDeps,
@@ -212,10 +222,8 @@ export interface AssembleWorkspaceOptions {
     members?: readonly string[]
     /** git base, e.g. git@github.com:tinycld. */
     repoBase?: string
-    /** Pin the always-cloned `app` member to this ref (tag/branch). Default HEAD. */
-    appRef?: string
-    /** Pin the always-cloned `core` member to this ref (tag/branch). Default HEAD. */
-    coreRef?: string
+    /** Pin the always-cloned `tinycld` member (app shell + core) to this ref (tag/branch). Default HEAD. */
+    tinycldRef?: string
     /** Injected for tests; defaults to real git clone. `ref` pins the checkout. */
     clone?: (url: string, dest: string, ref?: string) => boolean
 }
@@ -239,8 +247,9 @@ function realClone(url: string, dest: string, ref?: string): boolean {
  * Assemble a workspace skeleton at opts.root: write the canonical root manifest
  * (writeWorkspaceManifest) + lay down the root scaffolding (copyWorkspaceTemplate:
  * tinycld.packages.ts, vitest.config.ts, tests/ stubs, version files), then clone
- * ONLY app + core + the explicitly-requested feature members (skipping any
- * already present — e.g. a CI-checked-out member). There is NO workspace
+ * ONLY the tinycld member (merged app shell + core) + the explicitly-requested
+ * feature members (skipping any already present — e.g. a CI-checked-out member,
+ * where the merged repo is checked out into the tinycld/ slot). There is NO workspace
  * meta-repo clone: bootstrap is the source of all root scaffolding.
  * Unknown member names throw. Returns the members that ended up present. Does
  * NOT run the install (the caller / CI controls that — e.g. `pnpm install` or a
@@ -269,11 +278,11 @@ export function assembleWorkspace(opts: AssembleWorkspaceOptions): string[] {
     copyWorkspaceTemplate(opts.root)
 
     // Build the clone set keyed by member NAME so a member passed both bare and
-    // with an @ref dedupes to one clone (the ref-bearing entry wins). app+core
-    // are always cloned and pinnable via appRef/coreRef.
+    // with an @ref dedupes to one clone (the ref-bearing entry wins). The
+    // `tinycld` repo (merged app shell + core, with core + package-scripts
+    // nested) is always cloned and pinnable via tinycldRef.
     const refByName = new Map<string, string | undefined>()
-    refByName.set('app', opts.appRef)
-    refByName.set('core', opts.coreRef)
+    refByName.set('tinycld', opts.tinycldRef)
     for (const { name, ref } of requested) {
         // A later ref overrides an earlier bare entry; a bare entry never clears
         // an existing ref.
