@@ -22,11 +22,12 @@ describe('writeWorkspaceManifest', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        // app + app/package-scripts + core + every feature, regardless of what's cloned.
+        // tinycld (merged app shell + core) + its nested members + every
+        // feature, regardless of what's cloned.
         for (const m of [
-            'app',
-            'app/package-scripts',
-            'core',
+            'tinycld',
+            'tinycld/core',
+            'tinycld/package-scripts',
             'contacts',
             'mail',
             'calendar',
@@ -46,8 +47,8 @@ describe('writeWorkspaceManifest', () => {
         const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
         expect(yaml).toContain('nodeLinker: hoisted')
         expect(yaml).toContain('packages:')
-        expect(yaml).toContain('  - app')
-        expect(yaml).toContain('  - core')
+        expect(yaml).toContain('  - tinycld')
+        expect(yaml).toContain('  - tinycld/core')
     })
 
     it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
@@ -99,7 +100,7 @@ describe('writeWorkspaceManifest', () => {
             devDependencies: { typescript: '^5.0.0' },
             engines: { node: '>=20' },
             scripts: { prepare: 'echo hi', postinstall: 'old-postinstall' },
-            workspaces: ['app', 'core'],
+            workspaces: ['tinycld', 'tinycld/core'],
         }
         writeFileSync(join(dir, 'package.json'), JSON.stringify(existing))
         writeWorkspaceManifest(dir)
@@ -112,13 +113,13 @@ describe('writeWorkspaceManifest', () => {
         expect(pkg.scripts.prepare).toBe('echo hi')
         // postinstall is always enforced to the canonical value
         expect(pkg.scripts.postinstall).toBe(
-            'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs'
+            'tsx scripts/link-members.ts && cd tinycld && pnpm run packages:generate && cd .. && tsx scripts/link-members.ts && cd tinycld && pnpm run assets:copy-pdfjs'
         )
         // workspaces is always the full canonical list
         for (const m of [
-            'app',
-            'app/package-scripts',
-            'core',
+            'tinycld',
+            'tinycld/core',
+            'tinycld/package-scripts',
             'contacts',
             'mail',
             'calendar',
@@ -139,7 +140,7 @@ describe('writeWorkspaceManifest', () => {
         expect(pkg.name).toBe('@tinycld/workspace')
         expect(pkg.version).toBe('0.0.0')
         expect(pkg.scripts.postinstall).toBe(
-            'tsx scripts/link-members.ts && cd app && pnpm run packages:generate && pnpm run assets:copy-pdfjs'
+            'tsx scripts/link-members.ts && cd tinycld && pnpm run packages:generate && cd .. && tsx scripts/link-members.ts && cd tinycld && pnpm run assets:copy-pdfjs'
         )
     })
 
@@ -200,24 +201,24 @@ describe('copyWorkspaceTemplate', () => {
 })
 
 describe('assembleWorkspace (clone scope)', () => {
-    it('clones ONLY app + core by default (no features, no workspace meta-repo)', () => {
+    it('clones ONLY the tinycld member by default (no features, no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
         const present = assembleWorkspace({ root: dir, clone: makeCloneStub(urls) })
-        // No workspace clone: root scaffolding is generated, then app + core clone.
+        // No workspace clone: root scaffolding is generated, then the single
+        // tinycld repo (merged app shell + core) clones.
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toEqual(['app', 'core'])
+        expect(memberNames).toEqual(['tinycld'])
         expect(present).not.toContain('workspace')
-        expect(present).toContain('app')
-        expect(present).toContain('core')
+        expect(present).toContain('tinycld')
     })
 
-    it('clones app + core + only the requested features (no workspace meta-repo)', () => {
+    it('clones tinycld + only the requested features (no workspace meta-repo)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const urls: string[] = []
         assembleWorkspace({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        expect(memberNames).toEqual(['app', 'core', 'mail'])
+        expect(memberNames).toEqual(['tinycld', 'mail'])
     })
 
     it('throws on an unknown feature member', () => {
@@ -232,28 +233,28 @@ describe('assembleWorkspace (clone scope)', () => {
         )
     })
 
-    // The app-anchored CI/release flow checks out app into ws/app BEFORE running
-    // bootstrap, so the workspace root already contains the app member. bootstrap
-    // must NOT re-clone it (that would clobber the pinned checkout) but must still
-    // record it present and clone everything else around it.
-    it('skips re-cloning a member already checked out at the root (e.g. CI app pre-checkout)', () => {
+    // The tinycld-anchored CI/release flow checks out the merged repo into
+    // ws/tinycld BEFORE running bootstrap, so the workspace root already contains
+    // the tinycld member. bootstrap must NOT re-clone it (that would clobber the
+    // pinned checkout) but must still record it present and clone everything else
+    // around it.
+    it('skips re-cloning a member already checked out at the root (e.g. CI tinycld pre-checkout)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        // Simulate the CI checkout: ws/app already present with a package.json.
-        mkdirSync(join(dir, 'app'))
-        writeFileSync(join(dir, 'app', 'package.json'), JSON.stringify({ name: 'app', version: 'pinned' }))
+        // Simulate the CI checkout: ws/tinycld already present with a package.json.
+        mkdirSync(join(dir, 'tinycld'))
+        writeFileSync(join(dir, 'tinycld', 'package.json'), JSON.stringify({ name: 'tinycld', version: 'pinned' }))
         const urls: string[] = []
         const present = assembleWorkspace({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const cloned = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
-        // app is NOT re-cloned...
-        expect(cloned).not.toContain('app')
-        // ...but core + the requested feature are.
-        expect(cloned).toEqual(['core', 'mail'])
-        // app is still recorded present alongside the freshly cloned members.
-        expect(present).toContain('app')
-        expect(present).toContain('core')
+        // tinycld is NOT re-cloned...
+        expect(cloned).not.toContain('tinycld')
+        // ...but the requested feature is.
+        expect(cloned).toEqual(['mail'])
+        // tinycld is still recorded present alongside the freshly cloned members.
+        expect(present).toContain('tinycld')
         expect(present).toContain('mail')
         // The pre-checkout's package.json is untouched (not overwritten by a clone).
-        expect(JSON.parse(readFileSync(join(dir, 'app', 'package.json'), 'utf-8')).version).toBe('pinned')
+        expect(JSON.parse(readFileSync(join(dir, 'tinycld', 'package.json'), 'utf-8')).version).toBe('pinned')
     })
 })
 
@@ -280,12 +281,11 @@ describe('assembleWorkspace (tag pinning)', () => {
         expect(mail?.ref).toBeUndefined()
     })
 
-    it('pins app and core via appRef / coreRef options', () => {
+    it('pins the tinycld member via the tinycldRef option', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         const calls: { url: string; ref?: string }[] = []
-        assembleWorkspace({ root: dir, appRef: 'v2.0.0', coreRef: 'v3.1.0', clone: makeRefStub(calls) })
-        expect(calls.find((c) => c.url.endsWith('/app.git'))?.ref).toBe('v2.0.0')
-        expect(calls.find((c) => c.url.endsWith('/core.git'))?.ref).toBe('v3.1.0')
+        assembleWorkspace({ root: dir, tinycldRef: 'v2.0.0', clone: makeRefStub(calls) })
+        expect(calls.find((c) => c.url.endsWith('/tinycld.git'))?.ref).toBe('v2.0.0')
     })
 
     it('dedupes a member given both bare and with @ref (clones once, pinned)', () => {
@@ -315,9 +315,8 @@ describe('assembleWorkspace (no workspace meta-repo clone)', () => {
         assembleWorkspace({ root: dir, repoBase: 'git@github.com:tinycld', clone: makeCloneStub(urls) })
         // No /workspace.git clone at all.
         expect(urls.some((u) => u.includes('/workspace.git'))).toBe(false)
-        // app + core are still cloned.
-        expect(urls).toContain('git@github.com:tinycld/app.git')
-        expect(urls).toContain('git@github.com:tinycld/core.git')
+        // The single tinycld member (merged app shell + core) is still cloned.
+        expect(urls).toContain('git@github.com:tinycld/tinycld.git')
     })
 
     it("never adds 'workspace' to present[]", () => {
@@ -333,7 +332,7 @@ describe('assembleWorkspace (no workspace meta-repo clone)', () => {
         // writeWorkspaceManifest output
         const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
         expect(pkg.name).toBe('@tinycld/workspace')
-        expect(pkg.workspaces).toContain('app/package-scripts')
+        expect(pkg.workspaces).toContain('tinycld/package-scripts')
         // copyWorkspaceTemplate output
         expect(existsSync(join(dir, 'tinycld.packages.ts'))).toBe(true)
         expect(existsSync(join(dir, 'vitest.config.ts'))).toBe(true)

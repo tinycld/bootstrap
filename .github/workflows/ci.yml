@@ -25,6 +25,35 @@ jobs:
       - run: pnpm run test
       - run: pnpm run build
 
+  integration:
+    name: Integration (real assemble + install)
+    runs-on: ubuntu-latest
+    # Real clone of tinycld/tinycld + full pnpm install + Go build. This is the
+    # lane that catches layout drift between bootstrap and the tinycld repo (a
+    # stubbed-clone unit test cannot). Heavy (network + minutes), so it runs as
+    # its own job gated by BOOTSTRAP_INTEGRATION=1.
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      # Go is needed by the assembled workspace's postinstall (schema export
+      # builds PocketBase) and by the test's `go build` assertion.
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - run: pnpm install --frozen-lockfile
+      # HTTPS base: runners have no SSH key for the default git@github.com clone.
+      - run: pnpm run test:integration
+        env:
+          BOOTSTRAP_INTEGRATION: '1'
+          TINYCLD_REPO_BASE: https://github.com/tinycld
+          # Until the merged-layout tinycld lands on main, validate against the
+          # PR branch that carries it. Drop this once tinycld/tinycld#40 merges.
+          BOOTSTRAP_INTEGRATION_REF: tsconfig-location-independence
+
   publish:
     name: Publish to npm
     needs: checks

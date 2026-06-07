@@ -20,7 +20,7 @@ export interface ParsedArgs {
     yes?: boolean
     /** Scaffold a new package. */
     new?: boolean
-    /** Assemble a workspace (clone app + core + --with features). */
+    /** Assemble a workspace (clone tinycld + --with features). */
     assembleOnly?: boolean
     with?: string[]
 }
