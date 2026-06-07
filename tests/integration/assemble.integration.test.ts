@@ -1,9 +1,13 @@
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { runAssembleOnly } from '../../src/index.ts'
+
+const run = promisify(execFile)
+const BOOTSTRAP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 // Real end-to-end assembly: clones the tinycld member from GitHub, runs a real
 // `pnpm install` (generator + link-members + Go wiring + schema export), and
@@ -17,8 +21,14 @@ import { runAssembleOnly } from '../../src/index.ts'
 // (minutes), so it never runs in the default offline `vitest run`. CI runs it in
 // a dedicated job. Pin the tinycld ref via BOOTSTRAP_INTEGRATION_REF (default:
 // main) to validate a pre-merge branch.
+//
+// Every external command is async (promisified execFile), NOT execFileSync: a
+// synchronous multi-minute call blocks the vitest worker's event loop, which
+// stalls its reporter RPC heartbeat to the main process — surfacing as a
+// spurious "Timeout calling onTaskUpdate" that fails the run even when all
+// assertions pass. Async keeps the loop responsive.
 const ENABLED = process.env.BOOTSTRAP_INTEGRATION === '1'
-const TINYCLD_REF = process.env.BOOTSTRAP_INTEGRATION_REF || undefined
+const TINYCLD_REF = process.env.BOOTSTRAP_INTEGRATION_REF
 const REPO_BASE = process.env.TINYCLD_REPO_BASE || 'https://github.com/tinycld'
 
 // Generous: a cold clone + full pnpm install of the Expo/PocketBase tree pulls
@@ -29,16 +39,34 @@ const TIMEOUT_MS = 12 * 60 * 1000
 describe.runIf(ENABLED)('bootstrap assembles a working tinycld install (integration)', () => {
     let root: string
 
-    beforeAll(() => {
+    beforeAll(async () => {
         root = mkdtempSync(join(tmpdir(), 'bs-int-'))
-        // Explicit root (never process.cwd()) so the assemble can't write into
-        // the bootstrap repo itself.
-        runAssembleOnly({ root, tinycldRef: TINYCLD_REF, members: [] })
-        execFileSync('pnpm', ['install', '--no-frozen-lockfile'], {
+        // Drive the real CLI (tsx src/index.ts) rather than calling
+        // runAssembleOnly in-process: its clone is a synchronous spawnSync, and
+        // running it out-of-process via async execFile keeps the worker loop free
+        // during the clone too. The CLI assembles into its cwd, so run it FROM the
+        // temp root (referencing index.ts by absolute path) — never from the
+        // bootstrap repo, which the CLI would otherwise assemble into.
+        // --with tinycld@<ref> pins the merged repo.
+        const cli = join(BOOTSTRAP_ROOT, 'src', 'index.ts')
+        const tsx = join(BOOTSTRAP_ROOT, 'node_modules', '.bin', 'tsx')
+        const withTinycld = TINYCLD_REF ? ['--with', `tinycld@${TINYCLD_REF}`] : []
+        await run(tsx, [cli, '--assemble-only', ...withTinycld], {
             cwd: root,
-            stdio: 'inherit',
             env: { ...process.env, TINYCLD_REPO_BASE: REPO_BASE },
             timeout: TIMEOUT_MS,
+        }).catch((err) => {
+            throw new Error(`assemble failed: ${err.stderr || err.message}`)
+        })
+        // Real install: runs the postinstall (link-members → generate →
+        // link-members → assets), which is where pbSchema export + go.work
+        // emission happen — the steps the assertions below verify.
+        await run('pnpm', ['install', '--no-frozen-lockfile'], {
+            cwd: root,
+            env: { ...process.env, TINYCLD_REPO_BASE: REPO_BASE },
+            timeout: TIMEOUT_MS,
+        }).catch((err) => {
+            throw new Error(`install failed:\n${err.stdout}\n${err.stderr}`)
         })
     }, TIMEOUT_MS)
 
@@ -65,18 +93,18 @@ describe.runIf(ENABLED)('bootstrap assembles a working tinycld install (integrat
         // single-module mode and fails on "missing go.sum entry for go.mod file"
         // for deps reached through the core replace. The go.work must always list
         // core.
-        const goWork = join(root, 'tinycld', 'server', 'go.work')
-        expect(existsSync(goWork)).toBe(true)
+        expect(existsSync(join(root, 'tinycld', 'server', 'go.work'))).toBe(true)
     })
 
     it(
         'typechecks the assembled app shell + core (tinycld-pkg typecheck)',
-        () => {
-            // Throws on non-zero exit → the test fails with tsc's output attached.
-            execFileSync('pnpm', ['exec', 'tinycld-pkg', 'typecheck'], {
+        async () => {
+            // Rejects on non-zero exit → the test fails with tsc's output attached.
+            await run('pnpm', ['exec', 'tinycld-pkg', 'typecheck'], {
                 cwd: join(root, 'tinycld'),
-                stdio: 'inherit',
                 timeout: TIMEOUT_MS,
+            }).catch((err) => {
+                throw new Error(`typecheck failed:\n${err.stdout}\n${err.stderr}`)
             })
         },
         TIMEOUT_MS
@@ -84,11 +112,12 @@ describe.runIf(ENABLED)('bootstrap assembles a working tinycld install (integrat
 
     it(
         'builds the Go server (go build -o tinycld .)',
-        () => {
-            execFileSync('go', ['build', '-o', 'tinycld', '.'], {
+        async () => {
+            await run('go', ['build', '-o', 'tinycld', '.'], {
                 cwd: join(root, 'tinycld', 'server'),
-                stdio: 'inherit',
                 timeout: TIMEOUT_MS,
+            }).catch((err) => {
+                throw new Error(`go build failed:\n${err.stdout}\n${err.stderr}`)
             })
         },
         TIMEOUT_MS
