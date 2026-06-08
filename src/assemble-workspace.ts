@@ -185,12 +185,22 @@ export function writeWorkspaceManifest(dir: string): void {
  * false` ships via the tinycld repo and breaks `pnpm run lint` if no root config
  * sits above it), so this is the belt to the generator's suspenders. Content is
  * static, so always rewrite.
+ *
+ * `vcs.root` points at the tinycld/ member, NOT the workspace root: the
+ * canonical config relies on `.gitignore` to exclude generated/build artifacts,
+ * and the only .gitignore listing them is tinycld/.gitignore. Once canonical is
+ * `root: false`, every invocation under the workspace root resolves THIS config
+ * as the root and inherits its vcs settings, so useIgnoreFile must be anchored
+ * here. A freshly-assembled workspace root has no .gitignore (and isn't a git
+ * repo), so pointing biome there would make it error "couldn't find an ignore
+ * file".
  */
 function writeRootBiomeConfig(root: string): void {
     const config = {
         $schema: 'https://biomejs.dev/schemas/2.4.16/schema.json',
         root: true,
         extends: ['./tinycld/biome.json'],
+        vcs: { enabled: true, clientKind: 'git', useIgnoreFile: true, root: 'tinycld' },
     }
     writeFileSync(join(root, 'biome.json'), `${JSON.stringify(config, null, 4)}\n`)
 }
