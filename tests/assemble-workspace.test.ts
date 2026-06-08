@@ -156,6 +156,18 @@ describe('writeWorkspaceManifest', () => {
         writeWorkspaceManifest(dir)
         expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('pnpm-workspace.yaml')
     })
+
+    it('writes a root biome.json that extends the canonical config (so biome is resolvable from any member)', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
+        expect(biome.root).toBe(true)
+        expect(biome.extends).toEqual(['./tinycld/biome.json'])
+        // vcs.root points at tinycld/ (where the only .gitignore lives), NOT the
+        // bare workspace root — which has no .gitignore in a fresh assemble and
+        // would make biome error "couldn't find an ignore file".
+        expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
+    })
 })
 
 describe('copyWorkspaceTemplate', () => {

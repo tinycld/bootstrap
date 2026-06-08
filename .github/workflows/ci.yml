@@ -50,9 +50,8 @@ jobs:
         env:
           BOOTSTRAP_INTEGRATION: '1'
           TINYCLD_REPO_BASE: https://github.com/tinycld
-          # Until the merged-layout tinycld lands on main, validate against the
-          # PR branch that carries it. Drop this once tinycld/tinycld#40 merges.
-          BOOTSTRAP_INTEGRATION_REF: tsconfig-location-independence
+          # The merged-layout tinycld landed on main (tinycld/tinycld#40), so the
+          # integration test clones main's default branch — no ref pin needed.
 
   publish:
     name: Publish to npm

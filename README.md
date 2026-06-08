@@ -240,7 +240,7 @@ The package's `.github/workflows/ci.yml` mirrors what GitHub Actions runs:
 3. `pnpm exec tinycld-pkg check` from inside the package directory — runs biome (scoped), tsc, and vitest.
 4. `pnpm exec tinycld-pkg test:e2e` if the package ships Playwright specs under `tests/`.
 
-Biome lives only in `app/biome.json` (one config across every member). There is no `biome.json` in the scaffolded package repo. Typecheck runs against the app shell's tsconfig via `tinycld-pkg`, so the `expo` base, `uniwind` global augments, and the live `pbSchema` types are all in scope.
+The canonical Biome config lives in `tinycld/biome.json` (one rule set across every member). A minimal `root: true` config at the workspace root (written by bootstrap on assemble and by the generator on every install) extends it, so biome is resolvable from inside any member — `biome check .`, single-file checks, and the editor's biome LSP all pick up the right rules. A scaffolded package ships no `biome.json` and inherits these rules; it adds one (`{ "root": false, "extends": ["../tinycld/biome.json"], … }`) only to override a rule for that package. Typecheck runs against the app shell's tsconfig via `tinycld-pkg`, so the `expo` base, `uniwind` global augments, and the live `pbSchema` types are all in scope.
 
 ## Import conventions the templates assume
 
