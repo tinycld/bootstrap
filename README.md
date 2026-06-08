@@ -3,7 +3,7 @@
 `@tinycld/bootstrap` does two jobs:
 
 - **`--new <slug>`** — scaffold a new feature package (manifest, CI workflow, sample screens, seed, migrations, optionally a Go server).
-- **`--assemble-only`** — assemble a workspace root in the current directory by cloning the [`app`](https://github.com/tinycld/app) shell, the [`core`](https://github.com/tinycld/core) library, and any features named with `--with <slug>`.
+- **`--assemble-only`** — assemble a workspace root in the current directory by cloning the [`tinycld`](https://github.com/tinycld/tinycld) shell repo (which carries `@tinycld/core` + `@tinycld/package-scripts` nested) and any features named with `--with <slug>`.
 
 Modeled after [`create-vite`](https://github.com/vitejs/vite/tree/main/packages/create-vite): tiny CLI, templates embedded in the published npm package, no runtime network fetch.
 
@@ -20,16 +20,16 @@ The two modes are independent — scaffold mode does not require a pre-existing 
 mkdir ~/code/tinycld && cd ~/code/tinycld
 npx @tinycld/bootstrap@latest --assemble-only --with mail --with contacts
 pnpm install                  # links members + runs the generator (postinstall)
-cd app && pnpm run dev
+cd tinycld && pnpm run dev
 ```
 
-The CLI writes the workspace coordination files (`package.json`, `tinycld.packages.ts`, `vitest.config.ts`, shared test stubs, the `package-scripts/` CLI) from embedded templates, then clones `app` + `core` as siblings. Each `--with <slug>` adds one feature sibling. `app` and `core` are always cloned; everything else is opt-in.
+The CLI writes the workspace coordination files (`package.json`, `tinycld.packages.ts`, `vitest.config.ts`, shared test stubs) from embedded templates, then clones the `tinycld` repo (which carries `@tinycld/core` + `@tinycld/package-scripts` nested) as a sibling. Each `--with <slug>` adds one feature sibling. `tinycld` is always cloned; everything else is opt-in.
 
 `--with name@ref` pins a clone to a tag, branch, or commit:
 
 ```sh
 npx @tinycld/bootstrap@latest --assemble-only \
-    --with app@v1.2.0 --with core@v1.2.0 --with mail@v0.3.1
+    --with tinycld@v1.2.0 --with mail@v0.3.1
 ```
 
 Skipped if the target directory already exists, so re-running is safe.
@@ -49,7 +49,7 @@ npx @tinycld/bootstrap --new my-feature
 
 You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/<orgSlug>/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
 
-If `--new` runs from inside an existing workspace root (`app/` and `core/` siblings detected), the new package is scaffolded as a sibling and the link step adds it to the workspace `package.json`. Otherwise the CLI creates a wrapper directory `./tinycld-<slug>/` with the package at `./tinycld-<slug>/<slug>/`, assembles a workspace around it (cloning `app` + `core`), and links — leaving you a self-contained, runnable workspace.
+If `--new` runs from inside an existing workspace root (a `tinycld/` shell sibling detected), the new package is scaffolded as a sibling and the link step adds it to `pnpm-workspace.yaml`. Otherwise the CLI creates a wrapper directory `./tinycld-<slug>/` with the package at `./tinycld-<slug>/<slug>/`, assembles a workspace around it (cloning the `tinycld` repo), and links — leaving you a self-contained, runnable workspace.
 
 ### Prompts
 
@@ -64,7 +64,7 @@ If `--new` runs from inside an existing workspace root (`app/` and `core/` sibli
 | **Keyboard shortcut** (full only) | `f` | Single lowercase letter, or blank. |
 | **Include a Go server?** (full only) | `y` / `n` | If no, `server/` and the manifest's `server` field are omitted. |
 | **Target directory** | `./my-feature` | Default creates the new repo as a child of the current directory. Must not exist or must be empty. |
-| **Link into the workspace?** | `y` / `n` | After scaffolding, the CLI adds the package to `pnpm-workspace.yaml`'s `packages:` list (and the `package.json` `workspaces` hint) and runs `pnpm install` at the workspace root. If cwd isn't a workspace root, it assembles one (cloning `app` + `core`) first. Suppress with `--no-link`. |
+| **Link into the workspace?** | `y` / `n` | After scaffolding, the CLI adds the package to `pnpm-workspace.yaml`'s `packages:` list (and the `package.json` `workspaces` hint) and runs `pnpm install` at the workspace root. If cwd isn't a workspace root, it assembles one (cloning the `tinycld` repo) first. Suppress with `--no-link`. |
 
 ### Flags (non-interactive use)
 
@@ -120,7 +120,7 @@ my-feature/
 ├── pb-migrations/
 │   └── 1800000000_create_my-feature.js # creates my_feature_items collection
 ├── server/
-│   ├── go.mod                          # module tinycld.org/packages/my-feature; replaces tinycld.org/core → ../../core/server
+│   ├── go.mod                          # module tinycld.org/packages/my-feature; requires tinycld.org/core (no replace — resolved via the workspace go.work)
 │   └── register.go                     # func Register(app) hook for server-side wiring
 ├── tests/
 │   └── manifest.test.ts                # vitest smoke test of manifest shape
@@ -206,9 +206,9 @@ cd my-feature
 pnpm exec tinycld-pkg check
 ```
 
-Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to `app/` or `core/` are needed.
+Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to the `tinycld` shell or `@tinycld/core` are needed.
 
-> ⚠️ **`app/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `pnpm run dev` is already running, restart it (Ctrl-C, then `pnpm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
+> ⚠️ **`tinycld/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `pnpm run dev` is already running, restart it (Ctrl-C, then `pnpm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
 
 ### Day-to-day development
 
@@ -224,7 +224,7 @@ pnpm exec tinycld-pkg test:e2e     # playwright for this member
 To run the app itself, drop into the app shell:
 
 ```sh
-cd ../app
+cd ../tinycld
 pnpm run dev                  # expo + pocketbase, fronted by a single-port dev proxy
 pnpm run checks               # biome + tsc, ecosystem-wide
 ```

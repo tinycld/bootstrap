@@ -20,8 +20,8 @@ export interface LinkPackageInput {
      */
     members?: readonly string[]
     /**
-     * Injected for tests; defaults to assembling the workspace (app + core +
-     * `members`) at `workspaceDir` via `assembleWorkspace`, honoring
+     * Injected for tests; defaults to assembling the workspace (the `tinycld`
+     * repo + `members`) at `workspaceDir` via `assembleWorkspace`, honoring
      * `TINYCLD_REPO_BASE` so keyless/HTTPS environments work.
      */
     assemble?: (dir: string, members?: readonly string[]) => void
@@ -85,10 +85,10 @@ export function ensureMember(workspaceDir: string, slug: string): void {
  *     member and install. The existing root package.json is left untouched.
  *   - bootstrap: `workspaceDir` is a fresh wrapper that only contains the
  *     scaffolded `<slug>/` so far. Assemble the workspace *around* it —
- *     `assembleWorkspace` generates the root scaffolding and clones app + core
- *     (no workspace meta-repo) — then ensure the new member and install. The
- *     `postinstall` (`cd app && …`) only succeeds once `app/` exists, which is
- *     why we assemble before installing.
+ *     `assembleWorkspace` generates the root scaffolding and clones the
+ *     `tinycld` repo (no workspace meta-repo) — then ensure the new member and
+ *     install. The `postinstall` (`cd tinycld && …`) only succeeds once
+ *     `tinycld/` exists, which is why we assemble before installing.
  *
  * Returns true if the user chose to link (even if a subprocess failed — the
  * error is already logged, and we don't want to follow up with manual steps
@@ -105,15 +105,15 @@ export async function offerLinkPackage({
 }: LinkPackageInput): Promise<boolean> {
     if (mode === 'skip') return false
 
-    // A wrapper that isn't yet a workspace root needs app + core assembled in.
+    // A wrapper that isn't yet a workspace root needs the tinycld repo assembled in.
     const needsClone = !looksLikeWorkspaceRoot(workspaceDir)
 
     // Describe what we're about to clone in the prompt + spinner so the user
     // (and the test runner) sees that --with members were honored.
     const assemblyLabel =
         members && members.length > 0
-            ? `app + core + ${members.map((m) => m.replace(/@.*$/, '')).join(' + ')}`
-            : 'app + core'
+            ? `tinycld + ${members.map((m) => m.replace(/@.*$/, '')).join(' + ')}`
+            : 'tinycld'
 
     if (mode === 'prompt') {
         const message = needsClone
@@ -152,8 +152,8 @@ export async function offerLinkPackage({
 
 /**
  * Assemble the workspace skeleton at `dir`: write the workspace manifest and
- * clone app + core (+ any `members` from --with), honoring `TINYCLD_REPO_BASE`
- * for keyless/HTTPS envs.
+ * clone the `tinycld` repo (+ any `members` from --with), honoring
+ * `TINYCLD_REPO_BASE` for keyless/HTTPS envs.
  * `assembleWorkspace` is synchronous and throws on failure (unknown member,
  * clone error, etc.); `offerLinkPackage` wraps the call so the error surfaces
  * in the spinner.
