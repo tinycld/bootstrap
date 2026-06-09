@@ -111,9 +111,7 @@ export async function offerLinkPackage({
     // Describe what we're about to clone in the prompt + spinner so the user
     // (and the test runner) sees that --with members were honored.
     const assemblyLabel =
-        members && members.length > 0
-            ? `tinycld + ${members.map((m) => m.replace(/@.*$/, '')).join(' + ')}`
-            : 'tinycld'
+        members && members.length > 0 ? `tinycld + ${members.map((m) => m.replace(/@.*$/, '')).join(' + ')}` : 'tinycld'
 
     if (mode === 'prompt') {
         const message = needsClone
