@@ -49,6 +49,12 @@ describe('writeWorkspaceManifest', () => {
         expect(yaml).toContain('packages:')
         expect(yaml).toContain('  - tinycld')
         expect(yaml).toContain('  - tinycld/core')
+        // First-party libs are excluded from pnpm 11's minimumReleaseAge gate so
+        // a same-day @tinycld/* or pbtsdb release installs immediately (the gate
+        // would otherwise block CI for ~24h after publish).
+        expect(yaml).toContain('minimumReleaseAgeExclude:')
+        expect(yaml).toContain('  - pbtsdb')
+        expect(yaml).toContain("  - '@tinycld/*'")
     })
 
     it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
