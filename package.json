@@ -1,6 +1,6 @@
 {
     "name": "@tinycld/bootstrap",
-    "version": "2.4.0",
+    "version": "2.4.1",
     "description": "Scaffolder for @tinycld feature packages",
     "type": "module",
     "license": "MIT",
