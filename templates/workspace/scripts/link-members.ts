@@ -27,6 +27,15 @@ import { getPackages } from '../tinycld.packages'
 
 const WS_ROOT = path.resolve(import.meta.dirname, '..')
 
+// Absolute path to the app shell dir, which holds the nested core/,
+// package-scripts/, and the generated output. Normally <WS_ROOT>/tinycld, but
+// EAS cloud builds clone the shell into a dir named 'build', so the EAS install
+// script exports TINYCLD_APP_DIR. Resolved as an absolute path to match the
+// generator's scripts/paths.ts contract for the same env var.
+const APP_DIR = process.env.TINYCLD_APP_DIR
+    ? path.resolve(process.env.TINYCLD_APP_DIR)
+    : path.join(WS_ROOT, 'tinycld')
+
 // Map a member's package name to its on-disk sibling dir by scanning the
 // workspace root (the dir name need not equal the package name — e.g.
 // @tinycld/google-takeout-import lives in google-takeout-import/).
@@ -45,11 +54,11 @@ function memberDirsByName(): Map<string, string> {
             // not a dir, or no/unreadable package.json — skip
         }
     }
-    // @tinycld/core lives nested in the tinycld member (<WS_ROOT>/tinycld/core/);
+    // @tinycld/core lives nested in the app shell (<WS_ROOT>/<APP_DIR>/core/);
     // the top-level scan won't find it. Register it explicitly so the
     // node_modules/@tinycld/core symlink is still created.
     if (!index.has('@tinycld/core')) {
-        const nestedCore = path.join(WS_ROOT, 'tinycld', 'core')
+        const nestedCore = path.join(APP_DIR, 'core')
         try {
             const name = JSON.parse(
                 fs.readFileSync(path.join(nestedCore, 'package.json'), 'utf8')
@@ -83,13 +92,73 @@ function linkInto(nodeModulesDir: string, scopeName: string, targetDir: string):
     fs.symlinkSync(relTarget, linkPath)
 }
 
+const GITIGNORE_BEGIN = '# >>> tinycld members (auto-managed by link-members.ts) >>>'
+const GITIGNORE_END = '# <<< tinycld members <<<'
+
+// Keep the workspace-root .gitignore's member list in sync with the
+// independent repos present on disk. Every top-level dir that is its own git
+// repo or carries a package.json (members like mail/drive, plus sibling repos
+// like bootstrap/utils/web) must never be tracked by the workspace repo — each
+// has its own history + remote, and the workspace repo commits only
+// coordination files. Nested members (e.g. tinycld/core) are already covered by
+// ignoring /tinycld/. The block is delimited so we rewrite only between the
+// markers and never clobber hand-written rules (.env, node_modules, scratch).
+function discoverSiblingRepos(): string[] {
+    const names = new Set<string>()
+    for (const entry of fs.readdirSync(WS_ROOT)) {
+        if (entry === 'node_modules') continue
+        const dir = path.join(WS_ROOT, entry)
+        try {
+            if (!fs.statSync(dir).isDirectory()) continue
+        } catch {
+            continue
+        }
+        const isRepo = fs.existsSync(path.join(dir, '.git'))
+        const hasPkg = fs.existsSync(path.join(dir, 'package.json'))
+        if (isRepo || hasPkg) names.add(`/${entry}/`)
+    }
+    return [...names].sort()
+}
+
+function syncGitignore(): void {
+    const topLevel = discoverSiblingRepos()
+    if (topLevel.length === 0) return
+
+    const block = [GITIGNORE_BEGIN, ...topLevel, GITIGNORE_END].join('\n')
+    const gitignorePath = path.join(WS_ROOT, '.gitignore')
+    let existing = ''
+    try {
+        existing = fs.readFileSync(gitignorePath, 'utf8')
+    } catch {
+        // no .gitignore yet — we'll create one
+    }
+
+    const beginIdx = existing.indexOf(GITIGNORE_BEGIN)
+    const endIdx = existing.indexOf(GITIGNORE_END)
+    let next: string
+    if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
+        // Replace the existing managed block in place.
+        const before = existing.slice(0, beginIdx)
+        const after = existing.slice(endIdx + GITIGNORE_END.length)
+        next = `${before}${block}${after}`
+    } else {
+        // Append a fresh block, separated by a blank line if there's prior content.
+        const sep = existing.length > 0 && !existing.endsWith('\n\n') ? '\n\n' : ''
+        const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : ''
+        next = `${existing}${prefix}${sep}${block}\n`
+    }
+
+    if (next !== existing) {
+        fs.writeFileSync(gitignorePath, next)
+        console.log(`[link-members] synced ${topLevel.length} member(s) into .gitignore`)
+    }
+}
+
 function main(): void {
     const names = getPackages() // ['@tinycld/core', '@tinycld/calc', ...]
     const dirs = memberDirsByName()
-    const targets = [
-        path.join(WS_ROOT, 'node_modules'),
-        path.join(WS_ROOT, 'tinycld', 'node_modules'),
-    ]
+    syncGitignore()
+    const targets = [path.join(WS_ROOT, 'node_modules'), path.join(APP_DIR, 'node_modules')]
 
     let linked = 0
     for (const name of names) {
@@ -112,13 +181,15 @@ function main(): void {
     // `@tinycld/app-generated/*` imports resolve by name from any consumer that
     // pulls core in via its exports map. Skip if the generated dir doesn't exist
     // yet (generator runs in the same postinstall, but ordering/partial runs vary).
-    const appGeneratedDir = path.join(WS_ROOT, 'tinycld', 'lib', 'generated')
+    const appGeneratedDir = path.join(APP_DIR, 'lib', 'generated')
     if (fs.existsSync(appGeneratedDir)) {
         for (const nm of targets) {
             if (fs.existsSync(nm)) linkInto(nm, 'app-generated', appGeneratedDir)
         }
     } else {
-        console.warn('[link-members] tinycld/lib/generated not present — skipping @tinycld/app-generated link')
+        console.warn(
+            '[link-members] tinycld/lib/generated not present — skipping @tinycld/app-generated link'
+        )
     }
 
     console.log(`[link-members] linked ${linked} workspace member(s) into node_modules/@tinycld/`)
