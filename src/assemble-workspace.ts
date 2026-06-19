@@ -180,38 +180,77 @@ export function writeWorkspaceManifest(dir: string): void {
     writeRootBiomeConfig(dir)
 }
 
+// Re-root a biome glob written against the canonical's dir (<root>/tinycld/) so
+// it means the same thing one level up at the workspace root. `**`-anchored globs
+// already match at any depth; only bare relative segments need the tinycld/ prefix.
+function rerootBiomeGlob(glob: string): string {
+    const negated = glob.startsWith('!')
+    const body = negated ? glob.slice(1) : glob
+    if (body.startsWith('**') || body.startsWith('/')) return glob
+    const rerooted = `tinycld/${body}`
+    return negated ? `!${rerooted}` : rerooted
+}
+
+function rerootBiomePluginPath(p: string): string {
+    if (p.startsWith('/')) return p
+    return `./tinycld/${p.replace(/^\.\//, '')}`
+}
+
 /**
  * Write the workspace-root biome.json. Biome searches only UPWARD for config,
  * and the canonical biome.json lives at <root>/tinycld/ — a SIBLING of the
- * feature members, never an ancestor. Without a root config, running biome from
- * inside a member (or via the editor/LSP) finds nothing and falls back to
- * biome's built-in defaults, flooding output with bogus reformatting. This
- * minimal `root: true` config extends the canonical one (which is `root: false`)
- * so it's resolvable from anywhere. Members may add their own `root: false`
- * biome.json extending canonical to override rules; most don't.
+ * feature members, never an ancestor. Without a `root: true` config above the
+ * members, running biome from inside a sibling (or via the editor/LSP) finds
+ * nothing and falls back to biome's built-in defaults, flooding output with
+ * bogus reformatting.
  *
- * Seeded here so a freshly-assembled root lints before its first install. The
- * generator also writes it on every install (the canonical config's `root:
- * false` ships via the tinycld repo and breaks `pnpm run lint` if no root config
- * sits above it), so this is the belt to the generator's suspenders. Content is
- * static, so always rewrite.
+ * This config must NOT use `extends: ['./tinycld/biome.json']`: Biome 2.5.0
+ * silently DROPS the entire `plugins` array from any config reached through a
+ * file-path `extends` (biome #8488, only partially fixed by #8524, which covers
+ * `extends: "//"` but not a root extending a sibling file). Rules still load, so
+ * the GritQL pbtsdb guards would just never run. So the root config must INLINE
+ * the canonical's rules + plugins. The generator (tinycld/scripts/generate.ts,
+ * run by every install's postinstall) is the authoritative writer and re-derives
+ * this file from the canonical each install; this seed only has to be correct for
+ * the window between `--assemble-only` and the first install.
  *
- * `vcs.root` points at the tinycld/ member, NOT the workspace root: the
- * canonical config relies on `.gitignore` to exclude generated/build artifacts,
- * and the only .gitignore listing them is tinycld/.gitignore. Once canonical is
- * `root: false`, every invocation under the workspace root resolves THIS config
- * as the root and inherits its vcs settings, so useIgnoreFile must be anchored
- * here. A freshly-assembled workspace root has no .gitignore (and isn't a git
- * repo), so pointing biome there would make it error "couldn't find an ignore
- * file".
+ * Bootstrap can only inline when the canonical is already on disk (a re-assemble
+ * onto an existing workspace, or after the tinycld clone). On a fresh assemble the
+ * tinycld repo isn't cloned yet, so we fall back to a minimal `root: true` seed
+ * with no plugins — harmless because nothing is installed to lint yet, and the
+ * first install's generator immediately replaces it with the full inlined config.
+ *
+ * `files.includes`/plugin paths are re-rooted (the canonical writes them relative
+ * to tinycld/; inlining moves them up one dir). `vcs.root` points at tinycld/, not
+ * the workspace root: the canonical relies on tinycld/.gitignore to exclude
+ * generated/build artifacts, and every invocation under the workspace root
+ * resolves THIS config as the root and inherits its vcs settings. A fresh
+ * workspace root has no .gitignore (and isn't a git repo), so anchoring vcs there
+ * would error "couldn't find an ignore file".
  */
 function writeRootBiomeConfig(root: string): void {
-    const config = {
-        $schema: 'https://biomejs.dev/schemas/2.4.16/schema.json',
-        root: true,
-        extends: ['./tinycld/biome.json'],
-        vcs: { enabled: true, clientKind: 'git', useIgnoreFile: true, root: 'tinycld' },
-    }
+    const canonicalPath = join(root, 'tinycld', 'biome.json')
+
+    const config: Record<string, unknown> = existsSync(canonicalPath)
+        ? (() => {
+              const canonical = JSON.parse(readFileSync(canonicalPath, 'utf8'))
+              const c = { ...canonical, root: true }
+              delete c.extends
+              if (c.files?.includes) {
+                  c.files = { ...c.files, includes: c.files.includes.map(rerootBiomeGlob) }
+              }
+              if (Array.isArray(c.plugins)) {
+                  c.plugins = c.plugins.map((entry: string | { path: string }) =>
+                      typeof entry === 'string'
+                          ? rerootBiomePluginPath(entry)
+                          : { ...entry, path: rerootBiomePluginPath(entry.path) }
+                  )
+              }
+              return c
+          })()
+        : { $schema: 'https://biomejs.dev/schemas/2.5.0/schema.json', root: true }
+
+    config.vcs = { enabled: true, clientKind: 'git', useIgnoreFile: true, root: 'tinycld' }
     writeFileSync(join(root, 'biome.json'), `${JSON.stringify(config, null, 4)}\n`)
 }
 

@@ -163,15 +163,48 @@ describe('writeWorkspaceManifest', () => {
         expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('pnpm-workspace.yaml')
     })
 
-    it('writes a root biome.json that extends the canonical config (so biome is resolvable from any member)', () => {
+    it('writes a minimal root biome.json (no canonical to inline yet) on a fresh assemble', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
         const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
         expect(biome.root).toBe(true)
-        expect(biome.extends).toEqual(['./tinycld/biome.json'])
+        // No file-path `extends`: Biome 2.5.0 silently drops `plugins` from any
+        // config reached through one (biome #8488). The canonical isn't cloned yet
+        // on a fresh assemble, so there's nothing to inline — the first install's
+        // generator replaces this seed with the full inlined config.
+        expect(biome.extends).toBeUndefined()
+        expect(biome.plugins).toBeUndefined()
         // vcs.root points at tinycld/ (where the only .gitignore lives), NOT the
         // bare workspace root — which has no .gitignore in a fresh assemble and
         // would make biome error "couldn't find an ignore file".
+        expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
+    })
+
+    it('inlines the canonical config (rules + plugins, no extends) when tinycld/biome.json is present', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        mkdirSync(join(dir, 'tinycld', 'biome-plugins'), { recursive: true })
+        // A canonical with a relative plugin path and a location-sensitive include,
+        // both written relative to tinycld/ (as the real canonical is).
+        writeFileSync(
+            join(dir, 'tinycld', 'biome.json'),
+            JSON.stringify({
+                root: false,
+                files: { includes: ['**/*.ts', '!lib/generated', '!**/node_modules'] },
+                plugins: [{ path: './biome-plugins/guard.grit', includes: ['**/*.ts'] }],
+                linter: { rules: { recommended: true } },
+            })
+        )
+        writeWorkspaceManifest(dir)
+        const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
+        expect(biome.root).toBe(true)
+        expect(biome.extends).toBeUndefined()
+        // rules inlined
+        expect(biome.linter).toMatchObject({ rules: { recommended: true } })
+        // plugin path re-rooted from ./biome-plugins/ → ./tinycld/biome-plugins/
+        expect(biome.plugins[0].path).toBe('./tinycld/biome-plugins/guard.grit')
+        // bare include re-rooted; **-anchored include left as-is
+        expect(biome.files.includes).toContain('!tinycld/lib/generated')
+        expect(biome.files.includes).toContain('!**/node_modules')
         expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
     })
 })
