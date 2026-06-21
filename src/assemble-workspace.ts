@@ -98,6 +98,74 @@ function pnpmWorkspaceYaml(dir: string): string {
 }
 
 /**
+ * .watchmanconfig contents: the directories watchman must NOT crawl or subscribe
+ * to. The motivating failure is native build artifacts — tinycld/ios (Pods) and
+ * tinycld/android (.gradle, .cxx, build/) are multi-GB and churn on every native
+ * build, overflowing the fsevents kernel queue ("MustScanSubDirs UserDropped")
+ * and forcing slow recrawls that stall Metro starts.
+ *
+ * CRITICAL: the root node_modules is NOT ignored. Under node-linker=hoisted it's
+ * the flat store Metro resolves EVERY dependency from (incl. expo-router/entry,
+ * the app entry point); hiding it from watchman makes Metro's file map miss those
+ * files → "Unable to resolve module ./node_modules/...". Only node_modules/.cache
+ * (Metro's transform cache, never a resolvable path) is excluded. Each MEMBER's
+ * own node_modules IS ignored — under hoisting those are near-empty (deps resolve
+ * up to the root store), so Metro never reads them and they're pure crawl cost.
+ *
+ * Ignore_dirs matches path prefixes relative to the watch root, so the bare
+ * ".git" covers only the root-level one and every member's .git is listed
+ * explicitly. Listing an ignore_dir that doesn't exist is harmless — watchman
+ * skips absent paths.
+ *
+ * NON_MEMBER_DIRS are sibling dirs that aren't workspace members (so they're
+ * absent from the member union above) but routinely exist in a dev checkout and
+ * carry their own node_modules/.git: bootstrap (cloned for development), and the
+ * utils/web ecosystem tooling. Their node_modules/.git/dist are excluded too —
+ * none are part of the Metro app graph.
+ */
+const NON_MEMBER_DIRS = ['bootstrap', 'utils', 'web'] as const
+
+function watchmanConfig(dir: string): string {
+    const members = [...new Set([...ALL_MEMBERS, ...discoverPresentMembers(dir)])]
+    const memberDirs = members.flatMap((m) => [`${m}/node_modules`, `${m}/.git`])
+    const testResultDirs = members.filter((m) => !m.startsWith('tinycld')).map((m) => `${m}/test-results`)
+    const nonMemberDirs = NON_MEMBER_DIRS.flatMap((d) => [`${d}/node_modules`, `${d}/.git`, `${d}/dist`])
+
+    const ignoreDirs = [
+        // Root-level .git only. The root node_modules is deliberately NOT ignored:
+        // under node-linker=hoisted it's the flat store Metro resolves every dep
+        // from (incl. expo-router/entry), so hiding it breaks module resolution.
+        '.git',
+        // Metro's own transform cache under the root store — churns every build,
+        // never a resolvable module path.
+        'node_modules/.cache',
+        ...memberDirs,
+        ...nonMemberDirs,
+        // App-shell native + generated output that churns on builds. ios/android
+        // are multi-GB and the original motivation for this file.
+        'tinycld/ios',
+        'tinycld/android',
+        'tinycld/modules/app-updater/android/build',
+        'tinycld/modules/app-updater/ios/build',
+        'tinycld/.expo',
+        'tinycld/dist',
+        'tinycld/server/pb_data',
+        'tinycld/server/pb_test_data',
+        'tinycld/test-results',
+        'tinycld/playwright-report',
+        ...testResultDirs,
+    ]
+
+    const config = {
+        enable_parallel_crawl: true,
+        fsevents_try_resync: true,
+        fsevents_latency: 0.05,
+        ignore_dirs: [...new Set(ignoreDirs)],
+    }
+    return `${JSON.stringify(config, null, 4)}\n`
+}
+
+/**
  * Write (or merge into) the workspace-root coordination files in `dir`:
  * package.json, pnpm-workspace.yaml, and scripts/link-members.ts.
  *
@@ -168,6 +236,12 @@ export function writeWorkspaceManifest(dir: string): void {
     // pnpm-workspace.yaml is the source of truth for members + settings — always
     // rewrite it (unlike package.json, no human-owned fields live here).
     writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(dir))
+
+    // .watchmanconfig is derived from the member list, like pnpm-workspace.yaml —
+    // always rewrite so it self-heals and can't drift to a stale ignore list (a
+    // hand-maintained one kept missing the hoisted root node_modules, which is
+    // what stalls Metro starts). No human-owned fields live here.
+    writeFileSync(join(dir, '.watchmanconfig'), watchmanConfig(dir))
 
     // Minimal .npmrc: all pnpm settings live in pnpm-workspace.yaml (pnpm 10+
     // reads them there, not from .npmrc). Only written when absent (don't

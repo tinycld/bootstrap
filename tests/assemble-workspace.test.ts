@@ -180,6 +180,39 @@ describe('writeWorkspaceManifest', () => {
         expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
     })
 
+    it('writes a .watchmanconfig that ignores native build dirs but NOT the root node_modules', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const cfg = JSON.parse(readFileSync(join(dir, '.watchmanconfig'), 'utf-8'))
+        // The heavy churn is native build output — exclude it.
+        expect(cfg.ignore_dirs).toContain('tinycld/ios')
+        expect(cfg.ignore_dirs).toContain('tinycld/android')
+        // Member node_modules are near-empty under hoisting → safe to exclude.
+        expect(cfg.ignore_dirs).toContain('drive/node_modules')
+        expect(cfg.ignore_dirs).toContain('tinycld/core/node_modules')
+        // REGRESSION GUARD: the root node_modules must NOT be a bare ignore entry.
+        // Under node-linker=hoisted Metro resolves expo-router/entry (and every
+        // other dep) from it; ignoring it breaks the file map → "Unable to resolve
+        // module ./node_modules/expo-router/entry". Only its .cache is excluded.
+        expect(cfg.ignore_dirs).not.toContain('node_modules')
+        expect(cfg.ignore_dirs).toContain('node_modules/.cache')
+        // No duplicate entries (Set-deduped).
+        expect(new Set(cfg.ignore_dirs).size).toBe(cfg.ignore_dirs.length)
+    })
+
+    it('extends .watchmanconfig ignore_dirs to a custom on-disk member', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        mkdirSync(join(dir, 'calendar-slots'))
+        writeFileSync(join(dir, 'calendar-slots', 'package.json'), JSON.stringify({ name: '@tinycld/calendar-slots' }))
+        writeFileSync(join(dir, 'calendar-slots', 'manifest.ts'), 'export default {}')
+        writeWorkspaceManifest(dir)
+        const cfg = JSON.parse(readFileSync(join(dir, '.watchmanconfig'), 'utf-8'))
+        // A discovered member gets its node_modules + .git ignored, same union as
+        // pnpm-workspace.yaml — so a custom checkout never reintroduces the churn.
+        expect(cfg.ignore_dirs).toContain('calendar-slots/node_modules')
+        expect(cfg.ignore_dirs).toContain('calendar-slots/.git')
+    })
+
     it('inlines the canonical config (rules + plugins, no extends) when tinycld/biome.json is present', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         mkdirSync(join(dir, 'tinycld', 'biome-plugins'), { recursive: true })
