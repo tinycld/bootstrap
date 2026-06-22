@@ -256,6 +256,7 @@ describe('copyWorkspaceTemplate', () => {
             'vitest.config.ts',
             join('scripts', 'link-members.ts'),
             join('tests', 'expo-clipboard-stub.ts'),
+            join('tests', 'expo-image-stub.tsx'),
             join('tests', 'expo-router-stub.ts'),
             join('tests', 'lucide-react-native-stub.cjs'),
             join('tests', 'tinycld.packages.test.ts'),

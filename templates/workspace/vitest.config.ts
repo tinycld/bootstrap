@@ -75,6 +75,14 @@ export default defineConfig({
                 find: /^expo-clipboard$/,
                 replacement: path.join(ROOT, 'tests/expo-clipboard-stub.ts'),
             },
+            // expo-image pulls in expo-modules-core the same way (its Platform
+            // module reads the global __DEV__ at load). Any unit test that
+            // imports a component rendering a Thumbnail / <Image> would
+            // otherwise crash at collect time.
+            {
+                find: /^expo-image$/,
+                replacement: path.join(ROOT, 'tests/expo-image-stub.tsx'),
+            },
             // expo-router's CJS entry does `require("./global")` at module top,
             // which Node can't resolve when reached through a member symlink.
             {
