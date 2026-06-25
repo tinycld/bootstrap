@@ -24,6 +24,62 @@ const ALL_MEMBERS = ['tinycld', 'tinycld/core', 'tinycld/package-scripts', ...AL
 // workspace's committed packageManager.
 const PNPM_VERSION = '11.3.0'
 
+// Framework / native / styling version pins, written to pnpm-overrides.json and
+// transcribed into the pnpm `overrides:` block. The in-app OTA rebuild installs
+// with `pnpm install --no-frozen-lockfile` (admin package editing changes the
+// FEATURE set, so the lockfile can't be frozen), which would otherwise re-resolve
+// every caret/tilde range and drift these deps past the device's embedded native
+// binary — a native-module mismatch breaks the OTA bundle, a uniwind/tailwindcss
+// bump recompiles classNames differently (app-wide visual drift). Overrides force
+// the embedded-binary versions regardless of --no-frozen-lockfile while leaving
+// feature packages free. Bump in lockstep with each native (EAS) build.
+const FRAMEWORK_OVERRIDES: Record<string, string> = {
+    expo: '55.0.26',
+    react: '19.2.0',
+    'react-dom': '19.2.0',
+    'react-native': '0.83.6',
+    'react-native-reanimated': '4.2.1',
+    'react-native-worklets': '0.7.4',
+    'react-native-gesture-handler': '3.0.1',
+    'react-native-safe-area-context': '5.6.2',
+    'react-native-screens': '4.23.0',
+    'react-native-svg': '15.15.3',
+    'react-native-web': '0.21.2',
+    'expo-router': '55.0.16',
+    'expo-image': '55.0.11',
+    'expo-image-picker': '55.0.20',
+    '@sentry/react-native': '7.11.0',
+    uniwind: '1.8.0',
+    tailwindcss: '4.3.0',
+    'tailwind-variants': '0.1.20',
+    'tailwind-merge': '3.6.0',
+    '@gluestack-ui/utils': '5.0.5-alpha.0',
+    '@shopify/flash-list': '2.0.2',
+    'lucide-react-native': '1.17.0',
+    'react-hook-form': '7.77.0',
+    '@tanstack/db': '0.6.8',
+    '@tanstack/react-query': '5.101.0',
+}
+
+// The documentation key carried in pnpm-overrides.json (ignored by the YAML
+// generators — it isn't a valid package name). Kept in sync with the Go reader's
+// delete("//") in rebuild_assemble.go.
+const OVERRIDES_DOC =
+    'Source of truth for the pnpm `overrides:` block in pnpm-workspace.yaml. Both generators (this file and the Go writePnpmWorkspaceYAML in the OTA rebuild) read these pins so the dev workspace and the OTA build pin identically. See FRAMEWORK_OVERRIDES in assemble-workspace.ts for why. Bump in lockstep with each native (EAS) build.'
+
+// renderOverridesBlock formats FRAMEWORK_OVERRIDES as a pnpm `overrides:` YAML
+// block, sorted for a stable diff. Scoped names (leading @) are single-quoted so
+// YAML doesn't read them as anchors; plain names are bare. Mirrors the Go
+// renderOverridesBlock so both generators emit byte-identical blocks.
+function renderOverridesBlock(): string {
+    const lines = ['overrides:']
+    for (const name of Object.keys(FRAMEWORK_OVERRIDES).sort()) {
+        const key = name.startsWith('@') ? `'${name}'` : name
+        lines.push(`  ${key}: ${FRAMEWORK_OVERRIDES[name]}`)
+    }
+    return lines.join('\n')
+}
+
 /**
  * Direct child dirs of `root` that look like a feature member already on disk:
  * a package.json plus a manifest.ts/js. This mirrors the app generator's own
@@ -93,6 +149,12 @@ function pnpmWorkspaceYaml(dir: string): string {
         'allowBuilds:',
         '  esbuild: true',
         "  '@sentry/cli': true",
+        '',
+        '# Framework/native/styling version pins — see pnpm-overrides.json (the',
+        '# source of truth) and FRAMEWORK_OVERRIDES in @tinycld/bootstrap. These keep',
+        "# the OTA rebuild's --no-frozen-lockfile install from drifting these deps off",
+        '# the embedded native binary.',
+        renderOverridesBlock(),
         '',
     ].join('\n')
 }
@@ -236,6 +298,14 @@ export function writeWorkspaceManifest(dir: string): void {
     // pnpm-workspace.yaml is the source of truth for members + settings — always
     // rewrite it (unlike package.json, no human-owned fields live here).
     writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(dir))
+
+    // pnpm-overrides.json holds the version pins transcribed into the YAML
+    // `overrides:` block above. It's a standalone file (not just inline in the
+    // YAML) because the Go OTA-rebuild generator reads it to emit the same block
+    // on the server, where bootstrap never runs — so dev and OTA pin identically.
+    // Always rewritten: the pins are bootstrap-owned, no human fields live here.
+    const overridesJson = { '//': OVERRIDES_DOC, ...FRAMEWORK_OVERRIDES }
+    writeFileSync(join(dir, 'pnpm-overrides.json'), `${JSON.stringify(overridesJson, null, 4)}\n`)
 
     // .watchmanconfig is derived from the member list, like pnpm-workspace.yaml —
     // always rewrite so it self-heals and can't drift to a stale ignore list (a
