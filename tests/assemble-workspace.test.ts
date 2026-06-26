@@ -198,6 +198,13 @@ describe('writeWorkspaceManifest', () => {
         expect(cfg.ignore_dirs).toContain('node_modules/.cache')
         // No duplicate entries (Set-deduped).
         expect(new Set(cfg.ignore_dirs).size).toBe(cfg.ignore_dirs.length)
+        // fsevents tuning: resync off (watchman's post-2021 default — a dropped
+        // event must not trigger the slow journal-resync→full-recrawl that stalls
+        // Metro for 60s), and a high latency so install/checkout bursts overflow
+        // the kernel queue less. 1.0 carries margin for slow-disk users, who drop
+        // events at a far smaller burst than an SSD.
+        expect(cfg.fsevents_try_resync).toBe(false)
+        expect(cfg.fsevents_latency).toBe(1.0)
     })
 
     it('extends .watchmanconfig ignore_dirs to a custom on-disk member', () => {
