@@ -158,8 +158,25 @@ function watchmanConfig(dir: string): string {
 
     const config = {
         enable_parallel_crawl: true,
-        fsevents_try_resync: true,
-        fsevents_latency: 0.05,
+        // fsevents_try_resync is FALSE — watchman's own default since Dec 2021.
+        // When fsevents drops events (kFSEventStreamEventFlagUserDropped, common
+        // under the ~110k-file root store on a `pnpm install` / `git checkout`
+        // burst), resync-from-journal usually fails on macOS and falls back to a
+        // full recrawl — that's the 60s "syncToNow: timed out waiting for cookie
+        // file" stall on Metro start. Leaving it false skips the doomed resync.
+        fsevents_try_resync: false,
+        // Latency passed to FSEventStreamCreate (seconds). Higher = the OS batches
+        // more change notifications per wakeup, so a burst overflows the kernel
+        // queue less. Measured on a fast SSD here, an 8k-file burst (a `pnpm
+        // install` / `git checkout`) still drops events at 0.1/0.25, goes clean at
+        // 0.5, and survives even a 20k-file burst at 1.0. We ship 1.0 because this
+        // default lands on unknown hardware: a slow / encrypted / cloud-synced
+        // volume drains the fsevents queue more slowly, so it drops at a FAR
+        // smaller burst than an SSD — the extra latency is the margin those
+        // machines need. The cost is ~1s of detection lag before HMR fires per
+        // save; on a slow disk (where rebuilds are already slower) that's
+        // proportionally minor, and stability beats shaving it. (default is 0.01.)
+        fsevents_latency: 1.0,
         ignore_dirs: [...new Set(ignoreDirs)],
     }
     return `${JSON.stringify(config, null, 4)}\n`
