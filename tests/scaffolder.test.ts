@@ -85,9 +85,9 @@ describe('copyTemplate — full preset', () => {
     it('vitest/playwright configs spread the app shell config', () => {
         const target = scaffold()
         const vitest = readFileSync(join(target, 'vitest.config.ts'), 'utf8')
-        expect(vitest).toContain("from '../app/vitest.config'")
+        expect(vitest).toContain("from '@tinycld/core/vitest-config'")
         const playwright = readFileSync(join(target, 'playwright.config.ts'), 'utf8')
-        expect(playwright).toContain("from '../app/playwright.config'")
+        expect(playwright).toContain("from '@tinycld/core/playwright-config'")
         // The symlink path is tokenized to this package's slug.
         expect(playwright).toContain("'@tinycld', 'my-feature'")
         expect(playwright).not.toMatch(/\{\{PKG_[A-Z_]+\}\}/)

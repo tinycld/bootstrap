@@ -28,9 +28,10 @@ jobs:
         with:
           node-version: '24'
       # 3. Assemble the workspace root: writes package.json + tinycld.packages.ts
-      #    from bootstrap's embedded templates, clones app + core as siblings.
-      #    The PR's PACKAGE dir is already there and is skipped.
-      - name: Assemble workspace (app + core)
+      #    from bootstrap's embedded templates, clones the tinycld member (app
+      #    shell + core + package-scripts) as a sibling. The PR's PACKAGE dir is
+      #    already there and is skipped.
+      - name: Assemble workspace (tinycld + this package)
         working-directory: ws
         run: TINYCLD_REPO_BASE=https://github.com/tinycld npx @tinycld/bootstrap@latest --assemble-only
       # 4. Now switch to the version the assembled workspace pins (ws/.node-version
@@ -66,7 +67,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '24'
-      - name: Assemble workspace (app + core)
+      - name: Assemble workspace (tinycld + this package)
         working-directory: ws
         run: TINYCLD_REPO_BASE=https://github.com/tinycld npx @tinycld/bootstrap@latest --assemble-only
       # Switch to the version the assembled workspace pins.
@@ -81,16 +82,16 @@ jobs:
       - name: Install (workspace root)
         working-directory: ws
         run: pnpm install --no-frozen-lockfile
-      # Installs watchman so Metro's file watcher doesn't fall back to
-      # polling — see tinycld/app#21 for the trace evidence and the
-      # blank-page-after-reload flake it fixed.
+      # Installs the Playwright browser and pre-builds the web bundle. The
+      # composite action lives in the tinycld member, assembled at ws/tinycld.
       - name: Configure test env
-        uses: tinycld/app/.github/actions/configure-test-env@main
-      - name: Install Playwright browsers
-        working-directory: ws/app
-        run: pnpm exec playwright install --with-deps chromium
+        uses: ./ws/tinycld/.github/actions/configure-test-env
       - name: E2E
         working-directory: ws/${{ env.PACKAGE }}
+        env:
+          # The bundle was built by the action above; reuse it (the webServer
+          # still seeds + promotes + serves, just doesn't export a second time).
+          TINYCLD_E2E_SKIP_EXPORT: '1'
         run: pnpm exec tinycld-pkg test:e2e
       # Capture Playwright's per-failure artifacts (trace, screenshot,
       # video, error-context.md) so a CI failure can be diagnosed

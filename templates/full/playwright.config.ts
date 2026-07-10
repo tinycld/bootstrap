@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { defineConfig } from '@playwright/test'
-import appConfig from '../app/playwright.config'
+import appConfig from '@tinycld/core/playwright-config'
 
 // Package-scoped Playwright: inherit the app shell's webServer + browser config,
 // then point testDir at THIS package's tests/e2e through the app shell's
