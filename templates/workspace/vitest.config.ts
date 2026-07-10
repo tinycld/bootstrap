@@ -6,8 +6,8 @@ import { defineConfig } from 'vitest/config'
 // react-native/expo/sentry mocks that let the broader core suite run under
 // Node without the Metro/RN runtime.
 const ROOT = import.meta.dirname
-const CORE_DIR = path.join(ROOT, 'core')
-const APP_GENERATED = path.join(ROOT, 'app', 'lib', 'generated')
+const CORE_DIR = path.join(ROOT, 'tinycld', 'core')
+const APP_GENERATED = path.join(ROOT, 'tinycld', 'lib', 'generated')
 
 // Locate a hoisted dependency's dir. In this workspace layout deps hoist to
 // the workspace-root node_modules (all members declare framework deps as
@@ -62,7 +62,7 @@ export default defineConfig({
                 replacement: `${CORE_DIR}/$1`,
             },
             // --- @tinycld/app-generated/* build-time contract (written to
-            //     app/lib/generated/ by the generator; Vitest doesn't read
+            //     tinycld/lib/generated/ by the generator; Vitest doesn't read
             //     tsconfig paths) ---
             {
                 find: /^@tinycld\/app-generated\/(.+)$/,
@@ -102,10 +102,10 @@ export default defineConfig({
         environment: 'node',
         include: [
             'tests/**/*.test.{ts,tsx}',
-            'core/**/__tests__/**/*.test.{ts,tsx}',
-            'core/**/*.test.{ts,tsx}',
-            'app/scripts/**/__tests__/**/*.test.{ts,tsx}',
-            'package-scripts/tests/**/*.test.{ts,tsx}',
+            'tinycld/core/**/__tests__/**/*.test.{ts,tsx}',
+            'tinycld/core/**/*.test.{ts,tsx}',
+            'tinycld/scripts/**/__tests__/**/*.test.{ts,tsx}',
+            'tinycld/package-scripts/tests/**/*.test.{ts,tsx}',
         ],
         setupFiles: ['tests/unit-setup.ts'],
     },

@@ -1,6 +1,6 @@
 import path from 'node:path'
+import appConfig from '@tinycld/core/vitest-config'
 import { mergeConfig } from 'vitest/config'
-import appConfig from '../app/vitest.config'
 
 // Package-scoped vitest: inherit the app shell's canonical aliases (so
 // @tinycld/core/* etc. resolve identically), then add this package's own
