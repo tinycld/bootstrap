@@ -49,6 +49,45 @@ describe('validateName + validateDescription', () => {
         expect(validateName('My Feature')).toBeNull()
         expect(validateDescription('Does a thing.')).toBeNull()
     })
+
+    it('accepts safe punctuation that lands in generated code intact', () => {
+        expect(validateName('Mail & Calendar')).toBeNull()
+        expect(validateDescription('Sync contacts, tasks, and notes (v2)!')).toBeNull()
+    })
+
+    it('rejects single quotes that would break single-quoted TS strings', () => {
+        expect(validateName("It's Great")).toContain("' character")
+        expect(validateDescription("It's great")).toContain("' character")
+    })
+
+    it('rejects double quotes that would break JSON', () => {
+        expect(validateName('Say "hi"')).toContain('" character')
+        expect(validateDescription('Say "hi"')).toContain('" character')
+    })
+
+    it('rejects backslashes', () => {
+        expect(validateName('back\\slash')).toContain('\\ character')
+        expect(validateDescription('back\\slash')).toContain('\\ character')
+    })
+
+    it('rejects backticks', () => {
+        expect(validateName('use `code`')).toContain('` character')
+        expect(validateDescription('use `code`')).toContain('` character')
+    })
+
+    it('rejects template-literal injection', () => {
+        // Build the "${" digraph via concatenation so the literal doesn't sit in
+        // source (it would trip biome's noTemplateCurlyInString) — the value under
+        // test still contains it at runtime, which is what must be rejected.
+        const dollarBrace = `$${'{'}`
+        expect(validateName(`hi ${dollarBrace}process.env}`)).toContain(dollarBrace)
+        expect(validateDescription(`hi ${dollarBrace}1}`)).toContain(dollarBrace)
+    })
+
+    it('rejects newlines and control characters', () => {
+        expect(validateName('line1\nline2')).toContain('control characters')
+        expect(validateDescription('tab\there')).toContain('control characters')
+    })
 })
 
 describe('validateIcon / validateNavOrder / validateShortcut', () => {
