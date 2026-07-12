@@ -57,12 +57,12 @@ describe('writeWorkspaceManifest', () => {
         expect(yaml).toContain("  - '@tinycld/*'")
     })
 
-    it('writes pnpm-overrides.json + transcribes it into the YAML overrides block', () => {
+    it('writes package-versions.json + transcribes it into the YAML overrides block', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         writeWorkspaceManifest(dir)
 
         // Standalone source-of-truth file the Go OTA-rebuild generator also reads.
-        const overridesPath = join(dir, 'pnpm-overrides.json')
+        const overridesPath = join(dir, 'package-versions.json')
         expect(existsSync(overridesPath)).toBe(true)
         const pins = JSON.parse(readFileSync(overridesPath, 'utf-8'))
         expect(pins.uniwind).toBe('1.8.0')

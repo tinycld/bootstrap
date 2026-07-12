@@ -24,7 +24,7 @@ const ALL_MEMBERS = ['tinycld', 'tinycld/core', 'tinycld/package-scripts', ...AL
 // workspace's committed packageManager.
 const PNPM_VERSION = '11.3.0'
 
-// Framework / native / styling version pins, written to pnpm-overrides.json and
+// Framework / native / styling version pins, written to package-versions.json and
 // transcribed into the pnpm `overrides:` block. The in-app OTA rebuild installs
 // with `pnpm install --no-frozen-lockfile` (admin package editing changes the
 // FEATURE set, so the lockfile can't be frozen), which would otherwise re-resolve
@@ -61,7 +61,7 @@ const FRAMEWORK_OVERRIDES: Record<string, string> = {
     '@tanstack/react-query': '5.101.0',
 }
 
-// The documentation key carried in pnpm-overrides.json (ignored by the YAML
+// The documentation key carried in package-versions.json (ignored by the YAML
 // generators — it isn't a valid package name). Kept in sync with the Go reader's
 // delete("//") in rebuild_assemble.go.
 const OVERRIDES_DOC =
@@ -150,7 +150,7 @@ function pnpmWorkspaceYaml(dir: string): string {
         '  esbuild: true',
         "  '@sentry/cli': true",
         '',
-        '# Framework/native/styling version pins — see pnpm-overrides.json (the',
+        '# Framework/native/styling version pins — see package-versions.json (the',
         '# source of truth) and FRAMEWORK_OVERRIDES in @tinycld/bootstrap. These keep',
         "# the OTA rebuild's --no-frozen-lockfile install from drifting these deps off",
         '# the embedded native binary.',
@@ -299,13 +299,13 @@ export function writeWorkspaceManifest(dir: string): void {
     // rewrite it (unlike package.json, no human-owned fields live here).
     writeFileSync(join(dir, 'pnpm-workspace.yaml'), pnpmWorkspaceYaml(dir))
 
-    // pnpm-overrides.json holds the version pins transcribed into the YAML
+    // package-versions.json holds the version pins transcribed into the YAML
     // `overrides:` block above. It's a standalone file (not just inline in the
     // YAML) because the Go OTA-rebuild generator reads it to emit the same block
     // on the server, where bootstrap never runs — so dev and OTA pin identically.
     // Always rewritten: the pins are bootstrap-owned, no human fields live here.
     const overridesJson = { '//': OVERRIDES_DOC, ...FRAMEWORK_OVERRIDES }
-    writeFileSync(join(dir, 'pnpm-overrides.json'), `${JSON.stringify(overridesJson, null, 4)}\n`)
+    writeFileSync(join(dir, 'package-versions.json'), `${JSON.stringify(overridesJson, null, 4)}\n`)
 
     // .watchmanconfig is derived from the member list, like pnpm-workspace.yaml —
     // always rewrite so it self-heals and can't drift to a stale ignore list (a
