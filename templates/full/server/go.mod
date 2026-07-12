@@ -1,6 +1,6 @@
 module {{GO_MODULE}}
 
-go 1.25.0
+go 1.26.3
 
 require (
 	github.com/pocketbase/pocketbase v0.37.5
