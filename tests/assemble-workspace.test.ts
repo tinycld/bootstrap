@@ -57,6 +57,28 @@ describe('writeWorkspaceManifest', () => {
         expect(yaml).toContain("  - '@tinycld/*'")
     })
 
+    it('writes package-versions.json + transcribes it into the YAML overrides block', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+
+        // Standalone source-of-truth file the Go OTA-rebuild generator also reads.
+        const overridesPath = join(dir, 'package-versions.json')
+        expect(existsSync(overridesPath)).toBe(true)
+        const pins = JSON.parse(readFileSync(overridesPath, 'utf-8'))
+        expect(pins.uniwind).toBe('1.8.0')
+        expect(pins.tailwindcss).toBe('4.3.0')
+        expect(pins['react-native']).toBe('0.83.6')
+        expect(typeof pins['//']).toBe('string') // doc key present
+
+        // The same pins must appear in the YAML overrides block (this is what pnpm
+        // actually reads); the doc key must NOT leak in.
+        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
+        expect(yaml).toContain('\noverrides:\n')
+        expect(yaml).toContain('  uniwind: 1.8.0')
+        expect(yaml).toContain("  '@sentry/react-native': 7.11.0")
+        expect(yaml).not.toContain('//')
+    })
+
     it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         // Simulate a CI / custom-package checkout: a member dir with a
