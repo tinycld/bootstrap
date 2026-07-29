@@ -100,11 +100,14 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
+        // Only what the workspace root OWNS. Core's and the app shell's suites
+        // run under tinycld/vitest.config.ts (the member gate via
+        // `tinycld-pkg check`), which carries stubs this config does not
+        // (app-updater, etc.) — globbing them here ran them without those
+        // aliases and failed on collect (P3-6/R2). package-scripts rides both:
+        // it is in the app shell's member run, and it also passes here.
         include: [
             'tests/**/*.test.{ts,tsx}',
-            'tinycld/core/**/__tests__/**/*.test.{ts,tsx}',
-            'tinycld/core/**/*.test.{ts,tsx}',
-            'tinycld/scripts/**/__tests__/**/*.test.{ts,tsx}',
             'tinycld/package-scripts/tests/**/*.test.{ts,tsx}',
         ],
         setupFiles: ['tests/unit-setup.ts'],
