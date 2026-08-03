@@ -41,9 +41,17 @@ jobs:
           cache: pnpm
       # Go is needed by the assembled workspace's postinstall (schema export
       # builds PocketBase) and by the test's `go build` assertion.
+      #
+      # Read the version from the template we ship rather than hardcoding it: the
+      # assembled workspace's go.mod requires whatever templates/workspace/.go-version
+      # says, and a runner older than that fails the postinstall with
+      #   go: ../../go.mod requires go >= 1.26.3 (running go 1.25.x; GOTOOLCHAIN=local)
+      # which is what silently broke this job when the template moved to 1.26.3.
+      # setup-go runs before the assemble, so the generated root's .go-version does
+      # not exist yet — the template is the same value at the same moment.
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
+          go-version-file: templates/workspace/.go-version
       - run: pnpm install --frozen-lockfile
       # HTTPS base: runners have no SSH key for the default git@github.com clone.
       - run: pnpm run test:integration

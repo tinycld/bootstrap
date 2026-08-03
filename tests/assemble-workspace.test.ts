@@ -79,6 +79,27 @@ describe('writeWorkspaceManifest', () => {
         expect(yaml).not.toContain('//')
     })
 
+    // Some pins are only correct in PAIRS: each package calls internals of a
+    // specific sibling version, so pinning one and letting the other float
+    // produces a workspace that installs clean and throws on first render. That
+    // is not hypothetical — @tanstack/react-db was missing here while
+    // @tanstack/db was pinned, and a freshly assembled workspace died with
+    // "(0, t.isCollection) is not a function" on every screen. The pin list is
+    // hand-maintained, so assert the pairing rather than trusting review.
+    it('pins coupled framework packages together, not just one side', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        writeWorkspaceManifest(dir)
+        const pins = JSON.parse(readFileSync(join(dir, 'package-versions.json'), 'utf-8'))
+
+        for (const [a, b] of [
+            ['@tanstack/db', '@tanstack/react-db'],
+            ['react', 'react-dom'],
+        ]) {
+            expect(pins[a], `${a} must be pinned alongside ${b}`).toBeTruthy()
+            expect(pins[b], `${b} must be pinned alongside ${a}`).toBeTruthy()
+        }
+    })
+
     it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         // Simulate a CI / custom-package checkout: a member dir with a
