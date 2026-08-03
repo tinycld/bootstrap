@@ -58,6 +58,11 @@ const FRAMEWORK_OVERRIDES: Record<string, string> = {
     'lucide-react-native': '1.17.0',
     'react-hook-form': '7.77.0',
     '@tanstack/db': '0.6.8',
+    // Must move in lockstep with @tanstack/db above: react-db calls internals of
+    // a specific db version, so pinning one and letting the other float produces
+    // a workspace that installs clean and throws on first render
+    // ("(0, t.isCollection) is not a function" — every screen dead).
+    '@tanstack/react-db': '0.1.86',
     '@tanstack/react-query': '5.101.0',
 }
 
