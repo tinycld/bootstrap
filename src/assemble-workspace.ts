@@ -64,6 +64,12 @@ const FRAMEWORK_OVERRIDES: Record<string, string> = {
     // ("(0, t.isCollection) is not a function" — every screen dead).
     '@tanstack/react-db': '0.1.86',
     '@tanstack/react-query': '5.101.0',
+    // Not a version pin: a git fork. Upstream drax has unmerged fixes the board
+    // drag depends on, so every workspace must resolve to the fork or the
+    // kanban drag regresses. The fork commits its built lib/ and declares no
+    // prepare script, so this needs no allowBuilds entry — pnpm only blocks git
+    // deps that would run a build script on install.
+    'react-native-drax': 'github:nathanstitt/react-native-drax#b863d89a70c73454d7f3495bf79e382586495fa4',
 }
 
 // The documentation key carried in package-versions.json (ignored by the YAML
