@@ -11,6 +11,9 @@ jobs:
   checks:
     name: Lint / Typecheck / Test
     runs-on: ubuntu-latest
+    # Without an explicit cap a hung job rides GitHub's 6-hour default,
+    # blocking the PR and burning a runner the whole time.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       # corepack provides the pnpm version pinned in package.json "packageManager".
@@ -28,6 +31,9 @@ jobs:
   integration:
     name: Integration (real assemble + install)
     runs-on: ubuntu-latest
+    # Without an explicit cap a hung job rides GitHub's 6-hour default,
+    # blocking the PR and burning a runner the whole time.
+    timeout-minutes: 30
     # Real clone of tinycld/tinycld + full pnpm install + Go build. This is the
     # lane that catches layout drift between bootstrap and the tinycld repo (a
     # stubbed-clone unit test cannot). Heavy (network + minutes), so it runs as
@@ -66,6 +72,9 @@ jobs:
     needs: checks
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Without an explicit cap a hung job rides GitHub's 6-hour default,
+    # blocking the PR and burning a runner the whole time.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - run: corepack enable
