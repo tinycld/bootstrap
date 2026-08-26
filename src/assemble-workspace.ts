@@ -57,12 +57,12 @@ const FRAMEWORK_OVERRIDES: Record<string, string> = {
     '@shopify/flash-list': '2.0.2',
     'lucide-react-native': '1.17.0',
     'react-hook-form': '7.77.0',
-    '@tanstack/db': '0.6.8',
+    '@tanstack/db': '0.8.5',
     // Must move in lockstep with @tanstack/db above: react-db calls internals of
     // a specific db version, so pinning one and letting the other float produces
     // a workspace that installs clean and throws on first render
     // ("(0, t.isCollection) is not a function" — every screen dead).
-    '@tanstack/react-db': '0.1.86',
+    '@tanstack/react-db': '0.3.5',
     '@tanstack/react-query': '5.101.0',
     // Not a version pin: a git fork. Upstream drax has unmerged fixes the board
     // drag depends on, so every workspace must resolve to the fork or the
