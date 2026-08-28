@@ -63,6 +63,14 @@ const FRAMEWORK_OVERRIDES: Record<string, string> = {
     // a workspace that installs clean and throws on first render
     // ("(0, t.isCollection) is not a function" — every screen dead).
     '@tanstack/react-db': '0.3.5',
+    // Same lockstep, and it is NOT optional just because nothing imports it
+    // directly: query-db-collection reaches into @tanstack/db's internals
+    // (getLoadSubsetDemandKey). Left unpinned it floats to a release built
+    // against a newer db than the pin above, and the workspace dies at import
+    // with "does not provide an export named 'getLoadSubsetDemandKey'" — which
+    // is exactly how it failed in CI while every developer's machine, holding
+    // an older resolved copy, stayed green.
+    '@tanstack/query-db-collection': '1.2.10',
     '@tanstack/react-query': '5.101.0',
     // Not a version pin: a git fork. Upstream drax has unmerged fixes the board
     // drag depends on, so every workspace must resolve to the fork or the
