@@ -2,7 +2,7 @@ import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { Text, View } from 'react-native'
 
 // Sidebar for the {{PKG_NAME}} package. Rendered in the workspace drawer
-// when a user is on any /a/<orgSlug>/{{PKG_SLUG}}/... route.
+// when a user is on any /a/{{PKG_SLUG}}/... route.
 //
 // Replace with real navigation (folders, favorites, filters, etc). See
 // @tinycld/calendar or @tinycld/mail sidebars for richer examples.
