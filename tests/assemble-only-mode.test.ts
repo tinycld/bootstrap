@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -9,16 +9,29 @@ afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
+/**
+ * Materialize a no-op root-writer script inside a fake `tinycld` clone so
+ * assembleWorkspace's post-clone delegation step succeeds. These tests assert
+ * on clone URLs/refs, not on what the root-writer produces (that's covered in
+ * assemble-workspace.test.ts).
+ */
+function writeNoopRootWriter(dest: string): void {
+    mkdirSync(join(dest, 'scripts'), { recursive: true })
+    writeFileSync(join(dest, 'package.json'), '{"name":"tinycld","type":"module"}')
+    writeFileSync(join(dest, 'scripts', 'write-workspace-root.ts'), '')
+}
+
 /** Clone stub that records the cloned URLs and reports success. */
 function makeCloneStub(recorded: string[]) {
-    return (url: string, _dest: string): boolean => {
+    return (url: string, dest: string): boolean => {
         recorded.push(url)
+        if (url.endsWith('/tinycld.git')) writeNoopRootWriter(dest)
         return true
     }
 }
 
 describe('runAssembleOnly', () => {
-    it('writes the workspace manifest and clones via the injected runner', () => {
+    it('clones the requested members via the injected runner', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         const urls: string[] = []
         runAssembleOnly({
@@ -26,13 +39,10 @@ describe('runAssembleOnly', () => {
             members: ['contacts'],
             clone: makeCloneStub(urls),
         })
-        expect(existsSync(join(dir, 'package.json'))).toBe(true)
-        // No workspace meta-repo clone: root manifest is generated, then the
-        // single tinycld member + the requested feature clone.
+        // No workspace meta-repo clone: the single tinycld member + the
+        // requested feature clone; root files come from delegation.
         const memberNames = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
         expect(memberNames).toEqual(['tinycld', 'contacts'])
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.workspaces).toContain('tinycld/package-scripts')
     })
 
     it('throws if the required tinycld member fails to clone', () => {
@@ -49,8 +59,9 @@ describe('runAssembleOnly', () => {
     it('peels tinycld@ref out of --with into a pinned clone, keeps feature pins', () => {
         dir = mkdtempSync(join(tmpdir(), 'tool-'))
         const calls: { url: string; ref?: string }[] = []
-        const refStub = (url: string, _dest: string, ref?: string): boolean => {
+        const refStub = (url: string, dest: string, ref?: string): boolean => {
             calls.push({ url, ref })
+            if (url.endsWith('/tinycld.git')) writeNoopRootWriter(dest)
             return true
         }
         runAssembleOnly({

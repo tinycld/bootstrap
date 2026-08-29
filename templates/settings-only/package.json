@@ -19,10 +19,5 @@
     },
     "devDependencies": {
         "@tinycld/package-scripts": "*"
-    },
-    "peerDependencies": {
-        "react": ">=19",
-        "react-native": ">=0.83",
-        "expo-router": ">=55.0.0"
     }
 }
