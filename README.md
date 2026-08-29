@@ -23,7 +23,9 @@ pnpm install                  # links members + runs the generator (postinstall)
 cd tinycld && pnpm run dev
 ```
 
-The CLI writes the workspace coordination files (`package.json`, `tinycld.packages.ts`, `vitest.config.ts`, shared test stubs) from embedded templates, then clones the `tinycld` repo (which carries `@tinycld/core` + `@tinycld/package-scripts` nested) as a sibling. Each `--with <slug>` adds one feature sibling. `tinycld` is always cloned; everything else is opt-in.
+The CLI writes a small set of workspace files from embedded templates (`tinycld.packages.ts`, `vitest.config.ts`, shared test stubs), then clones the `tinycld` repo (which carries `@tinycld/core` + `@tinycld/package-scripts` nested) as a sibling. Each `--with <slug>` adds one feature sibling. `tinycld` is always cloned; everything else is opt-in.
+
+Bootstrap carries no vendor version pins and owns none of the root coordination-file formats. Immediately after cloning, it runs `scripts/write-workspace-root.ts` **from inside the freshly cloned `tinycld` repo** to write `package.json`, `pnpm-workspace.yaml` (incl. the pnpm `overrides:` block), a root `package-versions.json` copy, `biome.json`, `.watchmanconfig`, and `.npmrc` — all derived from `tinycld/core/package-versions.json`, the pins' source of truth. This means `--assemble-only` requires a tinycld ref that contains `scripts/write-workspace-root.ts` (the first tinycld release after 2026-08); an older ref fails assembly with a clear error naming the missing script, rather than silently producing a workspace with stale or missing root files.
 
 `--with name@ref` pins a clone to a tag, branch, or commit:
 
