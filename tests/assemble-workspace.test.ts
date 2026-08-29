@@ -2,295 +2,36 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { assembleWorkspace, copyWorkspaceTemplate, writeWorkspaceManifest } from '../src/assemble-workspace.ts'
+import { assembleWorkspace, copyWorkspaceTemplate } from '../src/assemble-workspace.ts'
 
 let dir: string
 afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
+/**
+ * Materialize a no-op root-writer script inside a fake `tinycld` clone so
+ * delegateWorkspaceRoot's contract is satisfied without asserting on what it
+ * writes — these stubs exist to test clone SCOPE (which repos got cloned),
+ * not delegation content (covered by the `assembleWorkspace delegation` suite
+ * below).
+ */
+function writeNoopRootWriter(dest: string): void {
+    mkdirSync(join(dest, 'scripts'), { recursive: true })
+    if (!existsSync(join(dest, 'package.json'))) {
+        writeFileSync(join(dest, 'package.json'), '{"name":"tinycld","type":"module"}')
+    }
+    writeFileSync(join(dest, 'scripts', 'write-workspace-root.ts'), '')
+}
+
 /** A clone stub that records the cloned URLs and reports success. */
 function makeCloneStub(recorded: string[]) {
-    return (url: string, _dest: string): boolean => {
+    return (url: string, dest: string): boolean => {
         recorded.push(url)
+        if (url.endsWith('/tinycld.git')) writeNoopRootWriter(dest)
         return true
     }
 }
-
-describe('writeWorkspaceManifest', () => {
-    it('writes a workspace package.json listing ALL possible members', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        // tinycld (merged app shell + core) + its nested members + every
-        // feature, regardless of what's cloned.
-        for (const m of [
-            'tinycld',
-            'tinycld/core',
-            'tinycld/package-scripts',
-            'contacts',
-            'mail',
-            'calendar',
-            'drive',
-            'calc',
-            'text',
-            'google-takeout-import',
-        ]) {
-            expect(pkg.workspaces).toContain(m)
-        }
-    })
-
-    it('writes a pnpm-workspace.yaml with the member list + pnpm settings', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        expect(existsSync(join(dir, 'pnpm-workspace.yaml'))).toBe(true)
-        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
-        expect(yaml).toContain('nodeLinker: hoisted')
-        expect(yaml).toContain('packages:')
-        expect(yaml).toContain('  - tinycld')
-        expect(yaml).toContain('  - tinycld/core')
-        // First-party libs are excluded from pnpm 11's minimumReleaseAge gate so
-        // a same-day @tinycld/* or pbtsdb release installs immediately (the gate
-        // would otherwise block CI for ~24h after publish).
-        expect(yaml).toContain('minimumReleaseAgeExclude:')
-        expect(yaml).toContain('  - pbtsdb')
-        expect(yaml).toContain("  - '@tinycld/*'")
-    })
-
-    it('writes package-versions.json + transcribes it into the YAML overrides block', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-
-        // Standalone source-of-truth file the Go OTA-rebuild generator also reads.
-        const overridesPath = join(dir, 'package-versions.json')
-        expect(existsSync(overridesPath)).toBe(true)
-        const pins = JSON.parse(readFileSync(overridesPath, 'utf-8'))
-        expect(pins.uniwind).toBe('1.8.0')
-        expect(pins.tailwindcss).toBe('4.3.0')
-        expect(pins['react-native']).toBe('0.83.6')
-        expect(typeof pins['//']).toBe('string') // doc key present
-
-        // The same pins must appear in the YAML overrides block (this is what pnpm
-        // actually reads); the doc key must NOT leak in.
-        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
-        expect(yaml).toContain('\noverrides:\n')
-        expect(yaml).toContain('  uniwind: 1.8.0')
-        expect(yaml).toContain("  '@sentry/react-native': 7.11.0")
-        expect(yaml).not.toContain('//')
-    })
-
-    // Some pins are only correct in PAIRS: each package calls internals of a
-    // specific sibling version, so pinning one and letting the other float
-    // produces a workspace that installs clean and throws on first render. That
-    // is not hypothetical — @tanstack/react-db was missing here while
-    // @tanstack/db was pinned, and a freshly assembled workspace died with
-    // "(0, t.isCollection) is not a function" on every screen. The pin list is
-    // hand-maintained, so assert the pairing rather than trusting review.
-    it('pins coupled framework packages together, not just one side', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const pins = JSON.parse(readFileSync(join(dir, 'package-versions.json'), 'utf-8'))
-
-        for (const [a, b] of [
-            ['@tanstack/db', '@tanstack/react-db'],
-            ['react', 'react-dom'],
-        ]) {
-            expect(pins[a], `${a} must be pinned alongside ${b}`).toBeTruthy()
-            expect(pins[b], `${b} must be pinned alongside ${a}`).toBeTruthy()
-        }
-    })
-
-    it('self-registers a manifest-bearing member present on disk but absent from ALL_MEMBERS', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        // Simulate a CI / custom-package checkout: a member dir with a
-        // package.json + manifest.ts that bootstrap doesn't know about.
-        mkdirSync(join(dir, 'calendar-slots'))
-        writeFileSync(join(dir, 'calendar-slots', 'package.json'), JSON.stringify({ name: '@tinycld/calendar-slots' }))
-        writeFileSync(join(dir, 'calendar-slots', 'manifest.ts'), 'export default {}')
-        // A non-member dir (no manifest) must NOT be registered.
-        mkdirSync(join(dir, 'scratch'))
-        writeFileSync(join(dir, 'scratch', 'package.json'), JSON.stringify({ name: 'scratch' }))
-        writeWorkspaceManifest(dir)
-
-        // Authoritative source pnpm reads: the member must land in pnpm-workspace.yaml.
-        const yaml = readFileSync(join(dir, 'pnpm-workspace.yaml'), 'utf-8')
-        expect(yaml).toContain('  - calendar-slots')
-        expect(yaml).not.toContain('  - scratch')
-
-        // The package.json `workspaces` hint stays in sync (no duplicates).
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.workspaces).toContain('calendar-slots')
-        expect(pkg.workspaces).not.toContain('scratch')
-        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
-    })
-
-    it('pins packageManager + adds the tsx devDep', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.packageManager).toMatch(/^pnpm@/)
-        expect(pkg.devDependencies.tsx).toBeTruthy()
-    })
-
-    it('has no duplicate workspace entries', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
-    })
-
-    it('merges into an existing package.json — extra fields survive, workspaces + postinstall always correct', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        const existing = {
-            name: '@tinycld/workspace',
-            version: '1.2.3',
-            private: true,
-            type: 'module',
-            devDependencies: { typescript: '^5.0.0' },
-            engines: { node: '>=20' },
-            scripts: { prepare: 'echo hi', postinstall: 'old-postinstall' },
-            workspaces: ['tinycld', 'tinycld/core'],
-        }
-        writeFileSync(join(dir, 'package.json'), JSON.stringify(existing))
-        writeWorkspaceManifest(dir)
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        // Extra devDeps survive; bootstrap adds tsx (needed by the postinstall).
-        expect(pkg.devDependencies.typescript).toBe('^5.0.0')
-        expect(pkg.devDependencies.tsx).toBeTruthy()
-        expect(pkg.engines).toEqual({ node: '>=20' })
-        // Extra script survives
-        expect(pkg.scripts.prepare).toBe('echo hi')
-        // postinstall is always enforced to the canonical value
-        expect(pkg.scripts.postinstall).toBe(
-            'tsx scripts/link-members.ts && cd tinycld && pnpm run packages:generate && cd .. && tsx scripts/link-members.ts && cd tinycld && pnpm run assets:copy-pdfjs'
-        )
-        // workspaces is always the full canonical list
-        for (const m of [
-            'tinycld',
-            'tinycld/core',
-            'tinycld/package-scripts',
-            'contacts',
-            'mail',
-            'calendar',
-            'drive',
-            'calc',
-            'text',
-            'google-takeout-import',
-        ]) {
-            expect(pkg.workspaces).toContain(m)
-        }
-        expect(new Set(pkg.workspaces).size).toBe(pkg.workspaces.length)
-    })
-
-    it('writes the full generated manifest when no package.json exists yet', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.name).toBe('@tinycld/workspace')
-        expect(pkg.version).toBe('0.0.0')
-        expect(pkg.scripts.postinstall).toBe(
-            'tsx scripts/link-members.ts && cd tinycld && pnpm run packages:generate && cd .. && tsx scripts/link-members.ts && cd tinycld && pnpm run assets:copy-pdfjs'
-        )
-    })
-
-    it('does not overwrite an existing .npmrc', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeFileSync(join(dir, '.npmrc'), 'custom-setting=true\n')
-        writeWorkspaceManifest(dir)
-        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toBe('custom-setting=true\n')
-    })
-
-    it('writes a minimal .npmrc (pnpm settings live in pnpm-workspace.yaml) when none exists', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        expect(readFileSync(join(dir, '.npmrc'), 'utf-8')).toContain('pnpm-workspace.yaml')
-    })
-
-    it('writes a minimal root biome.json (no canonical to inline yet) on a fresh assemble', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
-        expect(biome.root).toBe(true)
-        // No file-path `extends`: Biome 2.5.0 silently drops `plugins` from any
-        // config reached through one (biome #8488). The canonical isn't cloned yet
-        // on a fresh assemble, so there's nothing to inline — the first install's
-        // generator replaces this seed with the full inlined config.
-        expect(biome.extends).toBeUndefined()
-        expect(biome.plugins).toBeUndefined()
-        // vcs.root points at tinycld/ (where the only .gitignore lives), NOT the
-        // bare workspace root — which has no .gitignore in a fresh assemble and
-        // would make biome error "couldn't find an ignore file".
-        expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
-    })
-
-    it('writes a .watchmanconfig that ignores native build dirs but NOT the root node_modules', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        writeWorkspaceManifest(dir)
-        const cfg = JSON.parse(readFileSync(join(dir, '.watchmanconfig'), 'utf-8'))
-        // The heavy churn is native build output — exclude it.
-        expect(cfg.ignore_dirs).toContain('tinycld/ios')
-        expect(cfg.ignore_dirs).toContain('tinycld/android')
-        // Member node_modules are near-empty under hoisting → safe to exclude.
-        expect(cfg.ignore_dirs).toContain('drive/node_modules')
-        expect(cfg.ignore_dirs).toContain('tinycld/core/node_modules')
-        // REGRESSION GUARD: the root node_modules must NOT be a bare ignore entry.
-        // Under node-linker=hoisted Metro resolves expo-router/entry (and every
-        // other dep) from it; ignoring it breaks the file map → "Unable to resolve
-        // module ./node_modules/expo-router/entry". Only its .cache is excluded.
-        expect(cfg.ignore_dirs).not.toContain('node_modules')
-        expect(cfg.ignore_dirs).toContain('node_modules/.cache')
-        // No duplicate entries (Set-deduped).
-        expect(new Set(cfg.ignore_dirs).size).toBe(cfg.ignore_dirs.length)
-        // fsevents tuning: resync off (watchman's post-2021 default — a dropped
-        // event must not trigger the slow journal-resync→full-recrawl that stalls
-        // Metro for 60s), and a high latency so install/checkout bursts overflow
-        // the kernel queue less. 1.0 carries margin for slow-disk users, who drop
-        // events at a far smaller burst than an SSD.
-        expect(cfg.fsevents_try_resync).toBe(false)
-        expect(cfg.fsevents_latency).toBe(1.0)
-    })
-
-    it('extends .watchmanconfig ignore_dirs to a custom on-disk member', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        mkdirSync(join(dir, 'calendar-slots'))
-        writeFileSync(join(dir, 'calendar-slots', 'package.json'), JSON.stringify({ name: '@tinycld/calendar-slots' }))
-        writeFileSync(join(dir, 'calendar-slots', 'manifest.ts'), 'export default {}')
-        writeWorkspaceManifest(dir)
-        const cfg = JSON.parse(readFileSync(join(dir, '.watchmanconfig'), 'utf-8'))
-        // A discovered member gets its node_modules + .git ignored, same union as
-        // pnpm-workspace.yaml — so a custom checkout never reintroduces the churn.
-        expect(cfg.ignore_dirs).toContain('calendar-slots/node_modules')
-        expect(cfg.ignore_dirs).toContain('calendar-slots/.git')
-    })
-
-    it('inlines the canonical config (rules + plugins, no extends) when tinycld/biome.json is present', () => {
-        dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        mkdirSync(join(dir, 'tinycld', 'biome-plugins'), { recursive: true })
-        // A canonical with a relative plugin path and a location-sensitive include,
-        // both written relative to tinycld/ (as the real canonical is).
-        writeFileSync(
-            join(dir, 'tinycld', 'biome.json'),
-            JSON.stringify({
-                root: false,
-                files: { includes: ['**/*.ts', '!lib/generated', '!**/node_modules'] },
-                plugins: [{ path: './biome-plugins/guard.grit', includes: ['**/*.ts'] }],
-                linter: { rules: { recommended: true } },
-            })
-        )
-        writeWorkspaceManifest(dir)
-        const biome = JSON.parse(readFileSync(join(dir, 'biome.json'), 'utf-8'))
-        expect(biome.root).toBe(true)
-        expect(biome.extends).toBeUndefined()
-        // rules inlined
-        expect(biome.linter).toMatchObject({ rules: { recommended: true } })
-        // plugin path re-rooted from ./biome-plugins/ → ./tinycld/biome-plugins/
-        expect(biome.plugins[0].path).toBe('./tinycld/biome-plugins/guard.grit')
-        // bare include re-rooted; **-anchored include left as-is
-        expect(biome.files.includes).toContain('!tinycld/lib/generated')
-        expect(biome.files.includes).toContain('!**/node_modules')
-        expect(biome.vcs).toMatchObject({ useIgnoreFile: true, root: 'tinycld' })
-    })
-})
 
 describe('copyWorkspaceTemplate', () => {
     it('lays down the complete root scaffolding from the real templates/workspace dir', () => {
@@ -375,9 +116,11 @@ describe('assembleWorkspace (clone scope)', () => {
     // around it.
     it('skips re-cloning a member already checked out at the root (e.g. CI tinycld pre-checkout)', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        // Simulate the CI checkout: ws/tinycld already present with a package.json.
+        // Simulate the CI checkout: ws/tinycld already present with a package.json
+        // and the root-writer script (a real checkout carries it).
         mkdirSync(join(dir, 'tinycld'))
         writeFileSync(join(dir, 'tinycld', 'package.json'), JSON.stringify({ name: 'tinycld', version: 'pinned' }))
+        writeNoopRootWriter(join(dir, 'tinycld'))
         const urls: string[] = []
         const present = assembleWorkspace({ root: dir, members: ['mail'], clone: makeCloneStub(urls) })
         const cloned = urls.map((u) => u.split('/').pop()?.replace('.git', '') ?? '')
@@ -398,9 +141,7 @@ describe('assembleWorkspace (tag pinning)', () => {
     function makeRefStub(calls: { url: string; ref?: string }[]) {
         return (url: string, dest: string, ref?: string): boolean => {
             calls.push({ url, ref })
-            if (url.endsWith('/workspace.git')) {
-                writeFileSync(join(dest, 'package.json'), JSON.stringify({ name: '@tinycld/workspace' }))
-            }
+            if (url.endsWith('/tinycld.git')) writeNoopRootWriter(dest)
             return true
         }
     }
@@ -461,13 +202,9 @@ describe('assembleWorkspace (no workspace meta-repo clone)', () => {
         expect(present[0]).not.toBe('workspace')
     })
 
-    it('generates the root manifest + lays down the template scaffolding', () => {
+    it('lays down the template scaffolding before delegating to the cloned root-writer', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
         assembleWorkspace({ root: dir, clone: makeCloneStub([]) })
-        // writeWorkspaceManifest output
-        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
-        expect(pkg.name).toBe('@tinycld/workspace')
-        expect(pkg.workspaces).toContain('tinycld/package-scripts')
         // copyWorkspaceTemplate output
         expect(existsSync(join(dir, 'tinycld.packages.ts'))).toBe(true)
         expect(existsSync(join(dir, 'vitest.config.ts'))).toBe(true)
@@ -481,5 +218,49 @@ describe('assembleWorkspace (no workspace meta-repo clone)', () => {
         writeFileSync(join(dir, 'tinycld.packages.ts'), 'export const packages = ["custom"]')
         assembleWorkspace({ root: dir, clone: makeCloneStub([]) })
         expect(readFileSync(join(dir, 'tinycld.packages.ts'), 'utf-8')).toBe('export const packages = ["custom"]')
+    })
+})
+
+// A clone fake that materializes a minimal tinycld repo carrying a
+// root-writer script which records its invocation. The fake repo's
+// package.json declares "type":"module" so bare `node` runs the stub .ts
+// file as ESM (matching the real tinycld repo, which is type:module).
+function fakeCloneWithRootWriter(url: string, dest: string): boolean {
+    mkdirSync(join(dest, 'scripts'), { recursive: true })
+    writeFileSync(join(dest, 'package.json'), '{"name":"tinycld","type":"module"}')
+    if (url.endsWith('/tinycld.git')) {
+        writeFileSync(
+            join(dest, 'scripts', 'write-workspace-root.ts'),
+            "import fs from 'node:fs'\nfs.writeFileSync('root-writer-ran.txt', 'yes')\n"
+        )
+    }
+    return true
+}
+
+describe('assembleWorkspace delegation', () => {
+    it('runs the cloned root-writer after cloning', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        assembleWorkspace({ root: dir, clone: fakeCloneWithRootWriter })
+        expect(readFileSync(join(dir, 'root-writer-ran.txt'), 'utf8')).toBe('yes')
+    })
+
+    it('fails with a clear message when the cloned tinycld predates the root-writer', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const cloneWithoutWriter = (_url: string, dest: string): boolean => {
+            mkdirSync(dest, { recursive: true })
+            writeFileSync(join(dest, 'package.json'), '{"name":"tinycld"}')
+            return true
+        }
+        expect(() => assembleWorkspace({ root: dir, clone: cloneWithoutWriter })).toThrow(
+            /write-workspace-root\.ts.*tinycldRef|older bootstrap/
+        )
+    })
+
+    it('does not write pnpm-workspace.yaml itself before delegation', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const failingClone = (): boolean => false
+        assembleWorkspace({ root: dir, clone: failingClone })
+        expect(existsSync(join(dir, 'pnpm-workspace.yaml'))).toBe(false)
+        expect(existsSync(join(dir, 'package.json'))).toBe(false)
     })
 })
