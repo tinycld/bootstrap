@@ -25,10 +25,12 @@ const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', '
  */
 function delegateWorkspaceRoot(root: string): void {
     const script = join(root, 'tinycld', 'scripts', 'write-workspace-root.ts')
+    const tinycldDir = join(root, 'tinycld')
     if (!existsSync(script)) {
         throw new Error(
-            `${script} not found — the cloned tinycld ref predates core-owned workspace roots. ` +
-                'Pass a newer tinycldRef (or use an older @tinycld/bootstrap that still writes root files itself).'
+            `${script} not found — the tinycld checkout at ${tinycldDir} predates core-owned ` +
+                'workspace roots — update it (git pull) or pass a newer tinycldRef; or use an ' +
+                'older @tinycld/bootstrap that still writes root files itself.'
         )
     }
     const r = spawnSync(process.execPath, [script], { cwd: root, stdio: 'inherit' })

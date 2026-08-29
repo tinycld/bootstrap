@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,6 +86,24 @@ describe.runIf(ENABLED)('bootstrap assembles a working tinycld install (integrat
         // lands in the nested core the typecheck actually reads.
         expect(existsSync(join(root, 'tinycld', 'core', 'types', 'pbSchema.ts'))).toBe(true)
         expect(existsSync(join(root, 'tinycld', 'core', 'types', 'pbZodSchema.ts'))).toBe(true)
+    })
+
+    it('writes pnpm-workspace.yaml overrides matching every pin in core/package-versions.json', () => {
+        // The workspace root's overrides: block is derived FROM the cloned
+        // tinycld's core/package-versions.json (write-workspace-root.ts, run via
+        // delegateWorkspaceRoot) — this is the one assertion that catches the
+        // two staying out of sync (e.g. a pin present in the source table but
+        // dropped, mistyped, or stale in the emitted yaml).
+        const versionsTable = JSON.parse(readFileSync(join(root, 'tinycld', 'core', 'package-versions.json'), 'utf8'))
+        const { '//': _doc, ...pins } = versionsTable
+        const yaml = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
+        for (const [name, version] of Object.entries(pins)) {
+            // Mirrors renderOverridesBlock (tinycld/scripts/write-workspace-root.ts):
+            // scoped names (leading @) are single-quoted so YAML doesn't read the
+            // '@' as an anchor; plain names are bare.
+            const key = name.startsWith('@') ? `'${name}'` : name
+            expect(yaml).toContain(`  ${key}: ${version}`)
+        }
     })
 
     it('emits server/go.work so the Go build resolves core transitive deps in workspace mode', () => {
