@@ -47,7 +47,7 @@ TINYCLD_REPO_BASE=https://github.com/tinycld \
 npx @tinycld/bootstrap --new my-feature
 ```
 
-You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/<orgSlug>/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
+You'll be walked through an interactive prompt. The positional argument (`my-feature`) is the **slug** — kebab-case, 3–40 chars, becomes `@tinycld/my-feature`, the URL segment `/a/my-feature/`, and the Go module `tinycld.org/packages/my-feature`. Leave it off to be asked for it.
 
 If `--new` runs from inside an existing workspace root (a `tinycld/` shell sibling detected), the new package is scaffolded as a sibling and the link step adds it to `pnpm-workspace.yaml`. Otherwise the CLI creates a wrapper directory `./tinycld-<slug>/` with the package at `./tinycld-<slug>/<slug>/`, assembles a workspace around it (cloning the `tinycld` repo), and links — leaving you a self-contained, runnable workspace.
 
@@ -131,7 +131,7 @@ my-feature/
     ├── sidebar.tsx                     # sidebar rendered for this package's routes
     ├── types.ts                        # MyFeatureSchema + record interfaces
     └── screens/
-        ├── _layout.tsx                 # Stack layout for /a/[orgSlug]/my-feature/**
+        ├── _layout.tsx                 # Stack layout for /a/my-feature/**
         ├── [id].tsx                    # detail route
         └── index.tsx                   # list route
 ```
@@ -142,7 +142,7 @@ The `tinycld/my-feature/` nesting gives the package a stable public API surface 
 
 ### `settings-only` — service package
 
-Matches `@tinycld/google-takeout-import`. The package contributes only a settings panel — no routes, no nav entry, no collections, no server. Use this for integrations or admin-style tools that live under `/a/<orgSlug>/settings/**`.
+Matches `@tinycld/google-takeout-import`. The package contributes only a settings panel — no routes, no nav entry, no collections, no server. Use this for integrations or admin-style tools that live under `/a/settings/**`.
 
 <details>
 <summary>Generated tree</summary>
@@ -172,7 +172,7 @@ The scaffolded `manifest.ts` is the single source of truth for what a package co
 | Field | Meaning |
 |---|---|
 | `name`, `slug`, `version`, `description` | Identity. `slug` is the URL segment and the npm name's last segment. |
-| `routes.directory` | Subpath (resolved through `package.json` exports) where org-scoped screens live. Generator re-exports each screen file under `app/a/[orgSlug]/<slug>/`. |
+| `routes.directory` | Subpath (resolved through `package.json` exports) where the package's screens live. Generator re-exports each screen file under `app/a/(app)/<slug>/`. |
 | `nav` | `{ label, icon, order, shortcut }` — sidebar entry for the org workspace. |
 | `sidebar.component` | Subpath to the package's sidebar component, rendered when on its routes. |
 | `provider.component` | Optional context provider mounted around the package's routes. |
@@ -180,7 +180,7 @@ The scaffolded `manifest.ts` is the single source of truth for what a package co
 | `collections.register`, `collections.types` | Subpaths to the pbtsdb registration function and the schema types. |
 | `seed.script` | Default-export async function called by the dev seeder for this package. |
 | `server` | `{ package, module }` — relative dir + Go module path for the optional server extension. |
-| `settings[]` | One entry per panel contributed under `/a/<orgSlug>/settings/<slug>`. |
+| `settings[]` | One entry per panel contributed under `/a/settings/<slug>`. |
 
 All path-shaped fields use **short subpaths** (`'screens'`, `'sidebar'`, `'collections'`) that match the keys in `package.json`'s `exports` map — the generator follows the exports map to find the actual files under `tinycld/<slug>/...`.
 
@@ -206,7 +206,7 @@ cd my-feature
 pnpm exec tinycld-pkg check
 ```
 
-Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/<orgSlug>/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to the `tinycld` shell or `@tinycld/core` are needed.
+Once linked, the app shell's generator wires your manifest in automatically: routes appear at `/a/my-feature/**`, the sidebar renders, the settings panel shows up, migrations get picked up by PocketBase. No further changes to the `tinycld` shell or `@tinycld/core` are needed.
 
 > ⚠️ **`tinycld/metro.config.cjs` watches the workspace root**, but Expo's resolver caches package metadata at boot. If you add a new sibling while `pnpm run dev` is already running, restart it (Ctrl-C, then `pnpm run dev`) so the new member is picked up. CI is fine — it always starts fresh.
 

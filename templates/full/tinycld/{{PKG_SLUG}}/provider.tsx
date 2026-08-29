@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-// Optional context provider mounted by core inside /a/[orgSlug]/{{PKG_SLUG}}.
+// Optional context provider mounted by core inside /a/{{PKG_SLUG}}.
 // Wrap any package-specific context providers or run mount-time side
 // effects (e.g. subscribing to events, prefetching queries) here.
 //

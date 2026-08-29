@@ -2,7 +2,7 @@ import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { ScrollView, Text, View } from 'react-native'
 
 // The settings panel for {{PKG_NAME}}. Mounted by core inside
-// /a/<orgSlug>/settings/{{PKG_SLUG}}/{{PKG_SLUG}} via the manifest's
+// /a/settings/{{PKG_SLUG}}/{{PKG_SLUG}} via the manifest's
 // `settings[]` entry. This is the only screen the package contributes.
 
 export default function {{PKG_PASCAL}}Settings() {
