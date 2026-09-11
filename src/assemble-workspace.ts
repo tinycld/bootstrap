@@ -6,7 +6,16 @@ import { fileURLToPath } from 'node:url'
 // All feature members that exist in the ecosystem. The workspace manifest lists
 // ALL of them (npm tolerates absent dirs), so a partial checkout still installs.
 // But --assemble-only CLONES only app+core+requested — we do NOT force-clone all.
-const ALL_FEATURES = ['contacts', 'mail', 'calendar', 'drive', 'calc', 'text', 'google-takeout-import', 'boards'] as const
+const ALL_FEATURES = [
+    'contacts',
+    'mail',
+    'calendar',
+    'drive',
+    'calc',
+    'text',
+    'google-takeout-import',
+    'boards',
+] as const
 
 // The `tinycld` member is the one always-cloned repo (tinycld/tinycld): it is
 // the merged app shell + core. assembleWorkspace seeds it directly, pinnable via
