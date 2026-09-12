@@ -52,3 +52,52 @@ describe('getPackages (new layout)', () => {
         expect(getPackages()[0]).toBe('@tinycld/core')
     })
 })
+
+// A member may live one level down inside a dir that is NOT itself a member:
+// hosting/ui, whose parent ships Go only and is deliberately kept out of the
+// workspace, so its client surface stays in the hosting repo rather than
+// needing one of its own.
+describe('getPackages (nested members)', () => {
+    let root: string
+    beforeEach(() => {
+        root = makeWorkspace()
+        process.env.TINYCLD_WS_ROOT = root
+        resetPackagesCache()
+    })
+    afterEach(() => {
+        delete process.env.TINYCLD_WS_ROOT
+        fs.rmSync(root, { recursive: true, force: true })
+    })
+
+    it('finds a member nested inside a non-member parent', () => {
+        const ui = path.join(root, 'hosting', 'ui')
+        fs.mkdirSync(ui, { recursive: true })
+        fs.writeFileSync(path.join(ui, 'manifest.ts'), 'export default {}')
+        fs.writeFileSync(path.join(ui, 'package.json'), JSON.stringify({ name: '@tinycld/host-ui' }))
+        // The parent itself is not a member: no manifest.ts of its own.
+        fs.writeFileSync(path.join(root, 'hosting', 'go.mod'), 'module example.test\n')
+
+        resetPackagesCache()
+        expect(getPackages()).toContain('@tinycld/host-ui')
+    })
+
+    it('does not descend into a dir that is itself a member', () => {
+        // A feature's own subdirectory is its source tree, not another member.
+        const inner = path.join(root, 'contacts', 'vendored')
+        fs.mkdirSync(inner, { recursive: true })
+        fs.writeFileSync(path.join(inner, 'manifest.ts'), 'export default {}')
+        fs.writeFileSync(
+            path.join(inner, 'package.json'),
+            JSON.stringify({ name: '@tinycld/should-not-appear' })
+        )
+
+        resetPackagesCache()
+        expect(getPackages()).not.toContain('@tinycld/should-not-appear')
+    })
+
+    it('lists each member once when a nested scan revisits the tree', () => {
+        resetPackagesCache()
+        const pkgs = getPackages()
+        expect(new Set(pkgs).size).toBe(pkgs.length)
+    })
+})

@@ -49,6 +49,25 @@ export function getPackages(): string[] {
             if (hasManifest(dir)) features.push(name)
         }
 
+        // A member may also be nested one level down, inside a dir that is not
+        // itself a member — hosting/ui is the case: hosting/ ships Go only and
+        // stays out of the workspace, but its client surface has to be a
+        // package the generator sees, and keeping it there keeps it in the
+        // hosting repo. One level only: deep enough for this shape, shallow
+        // enough not to walk the tree.
+        for (const entry of fs.readdirSync(wsRoot)) {
+            const parent = path.join(wsRoot, entry)
+            if (entry === 'node_modules' || entry.startsWith('.')) continue
+            if (!isDir(parent) || hasManifest(parent)) continue
+            for (const nested of readdirSafe(parent)) {
+                const dir = path.join(parent, nested)
+                if (nested === 'node_modules' || nested.startsWith('.')) continue
+                if (!isDir(dir) || !hasManifest(dir)) continue
+                const name = readPackageName(dir)
+                if (name && name !== CORE_NAME) features.push(name)
+            }
+        }
+
         // @tinycld/core moved INSIDE the app shell (at <appDir>/core/); the
         // top-level scan above won't see it. Look for it explicitly so it is
         // still listed first. The app dir is normally <wsRoot>/tinycld, but EAS
@@ -76,6 +95,23 @@ export function getPackages(): string[] {
 // Test-only: clear the per-process cache so a fresh TINYCLD_WS_ROOT is read.
 export function resetPackagesCache(): void {
     cached = null
+}
+
+function readdirSafe(dir: string): string[] {
+    try {
+        return fs.readdirSync(dir)
+    } catch {
+        return []
+    }
+}
+
+function readPackageName(dir: string): string | null {
+    try {
+        const name = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).name
+        return typeof name === 'string' && name.length > 0 ? name : null
+    } catch {
+        return null
+    }
 }
 
 function hasManifest(dir: string): boolean {

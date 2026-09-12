@@ -54,6 +54,36 @@ function memberDirsByName(): Map<string, string> {
             // not a dir, or no/unreadable package.json — skip
         }
     }
+    // A member may also be nested one level down inside a dir that is not
+    // itself a member — hosting/ui, whose parent ships Go only and stays out of
+    // the workspace. Scanned after the top level so a top-level member wins a
+    // name collision.
+    for (const entry of fs.readdirSync(WS_ROOT)) {
+        if (entry === 'node_modules' || entry.startsWith('.')) continue
+        const parent = path.join(WS_ROOT, entry)
+        let nestedEntries: string[]
+        try {
+            if (!fs.statSync(parent).isDirectory()) continue
+            nestedEntries = fs.readdirSync(parent)
+        } catch {
+            continue
+        }
+        for (const nested of nestedEntries) {
+            if (nested === 'node_modules' || nested.startsWith('.')) continue
+            const dir = path.join(parent, nested)
+            try {
+                if (!fs.statSync(dir).isDirectory()) continue
+                const name = JSON.parse(
+                    fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+                ).name
+                if (typeof name === 'string' && name.length > 0 && !index.has(name)) {
+                    index.set(name, dir)
+                }
+            } catch {
+                // not a dir, or no/unreadable package.json — skip
+            }
+        }
+    }
     // @tinycld/core lives nested in the app shell (<WS_ROOT>/<APP_DIR>/core/);
     // the top-level scan won't find it. Register it explicitly so the
     // node_modules/@tinycld/core symlink is still created.
@@ -81,13 +111,25 @@ function linkInto(nodeModulesDir: string, scopeName: string, targetDir: string):
 
     // If a correct symlink already exists, leave it. Otherwise replace whatever
     // is there (stale link, or pnpm's own link for a depended-on member).
+    //
+    // The removal must not sit behind lstat in the same try: a DANGLING symlink
+    // (one whose target moved) makes readlink/lstat throw, and the old shape
+    // then skipped rmSync and fell straight into symlinkSync -> EEXIST, failing
+    // the whole install.
+    let matches = false
     try {
-        if (fs.lstatSync(linkPath).isSymbolicLink() && fs.readlinkSync(linkPath) === relTarget) {
-            return
-        }
-        fs.rmSync(linkPath, { recursive: true, force: true })
+        matches = fs.lstatSync(linkPath).isSymbolicLink() && fs.readlinkSync(linkPath) === relTarget
     } catch {
-        // nothing at linkPath yet
+        // nothing at linkPath, or a link we cannot read — treat as "replace it"
+    }
+    if (matches) return
+    // unlink first for the symlink case: rmSync follows a link to decide how to
+    // remove it, so a DANGLING one (target moved) is left in place and the
+    // symlinkSync below then fails EEXIST.
+    try {
+        fs.unlinkSync(linkPath)
+    } catch {
+        fs.rmSync(linkPath, { recursive: true, force: true })
     }
     fs.symlinkSync(relTarget, linkPath)
 }
