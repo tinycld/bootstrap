@@ -17,19 +17,21 @@ export function registerCollections(
     _core: CoreStores
 ) {
     // Hoisted rather than inlined: an inline `collectionOptions` object literal
-    // defeats inference of `alwaysExpand` against `relations`, typing every
+    // defeats inference of `alwaysFetchRelations` against `relations`, typing every
     // expand path as `never`.
     const indexing = {
         autoIndex: 'eager' as const,
         defaultIndexType: BasicIndex,
     }
 
-    // To auto-expand a relation, declare where its expanded records go with
-    // `relations`, then list the paths to fetch on every request:
+    // `relations` declares where PocketBase's expanded records are filed. Rows
+    // never carry `expand`; read a relation from its own collection, with
+    // `materialize()` in a select, a join, or `collection.get(id)`.
     //     relations: { owner: _core.users },
-    //     alwaysExpand: ['owner'],
-    // Declare `relations` alone (no `alwaysExpand`) to expand per query instead:
-    //     collection.expand('owner')
+    // Add `alwaysFetchRelations: ['owner']` only when this collection is the
+    // sole path by which rows enter an ON-DEMAND target — an eager target syncs
+    // itself, so fetching its relation only adds payload. For one query,
+    // use `collection.fetchRelations('owner')` instead.
     const {{PKG_SNAKE}}_items = newCollection('{{PKG_SNAKE}}_items', {
         omitOnInsert: ['created', 'updated'] as const,
         collectionOptions: indexing,
