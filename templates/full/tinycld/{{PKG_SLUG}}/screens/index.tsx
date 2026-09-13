@@ -3,7 +3,8 @@ import { ScrollView, Text, View } from 'react-native'
 
 // Index route for {{PKG_NAME}}, served at /a/{{PKG_SLUG}}.
 // Replace this placeholder with your list view (cards, table, whatever you
-// need) and wire it to your pbtsdb collections using `useOrgLiveQuery`.
+// need) and wire it to your pbtsdb collections using `useLiveQuery`
+// (or `useMyLiveQuery` when the query filters the current user's own rows).
 //
 // For navigation, use `useOrgHref()` from `@tinycld/core/lib/org-routes` —
 // never literal paths like `router.push('/{{PKG_SLUG}}/new')`, which miss the
