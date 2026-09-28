@@ -9,6 +9,12 @@ import type { {{PKG_PASCAL}}Schema } from './types'
 // field-wise, letting a generated `any` absorb any typed override.
 type MergedSchema = Omit<Schema, keyof {{PKG_PASCAL}}Schema> & {{PKG_PASCAL}}Schema
 
+// Every collection syncs on demand and subscribes per query (pbtsdb 0.10):
+// only the rows a live query asks for enter the store, and realtime covers
+// exactly those rows. The server emits a delete to a subscription a row
+// leaves, so a filtered view stays correct across updates.
+const onDemand = { syncMode: 'on-demand', realtime: 'query' } as const
+
 // Collections contributed by this package. Core calls this during pbtsdb
 // bootstrap; the returned object's keys become top-level keys on the app's
 // MergedSchema (accessible via `useStore('...')`).
@@ -34,6 +40,7 @@ export function registerCollections(
     // use `collection.fetchRelations('owner')` instead.
     const {{PKG_SNAKE}}_items = newCollection('{{PKG_SNAKE}}_items', {
         omitOnInsert: ['created', 'updated'] as const,
+        ...onDemand,
         collectionOptions: indexing,
     })
 
