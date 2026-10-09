@@ -9,6 +9,22 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 const run = promisify(execFile)
 const BOOTSTRAP_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
+// Mirrors isPlainSafeYamlKey (tinycld/scripts/write-workspace-root.ts) so this
+// test's expectation of which override keys get quoted stays in lockstep with
+// the generator that actually writes pnpm-workspace.yaml. Bootstrap doesn't
+// depend on tinycld/core as a package, so this is a deliberate duplicate, not
+// an import — keep the two in sync by hand if either one's quoting rule moves.
+const PLAIN_SAFE_SCALAR = /^[A-Za-z0-9_][\w./@-]*$/
+const RESERVED_WORDS = new Set(['true', 'false', 'null', 'yes', 'no', 'on', 'off', '~'])
+
+function isPlainSafeYamlKey(key: string): boolean {
+    if (key === '') return false
+    if (!PLAIN_SAFE_SCALAR.test(key)) return false
+    if (RESERVED_WORDS.has(key.toLowerCase())) return false
+    if (/^-?\d+(\.\d+)?$/.test(key)) return false
+    return true
+}
+
 // Real end-to-end assembly: clones the tinycld member from GitHub, runs a real
 // `pnpm install` (generator + link-members + Go wiring + schema export), and
 // asserts the assembled workspace is actually BUILDABLE — not just that the
@@ -98,10 +114,13 @@ describe.runIf(ENABLED)('bootstrap assembles a working tinycld install (integrat
         const { '//': _doc, ...pins } = versionsTable
         const yaml = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
         for (const [name, version] of Object.entries(pins)) {
-            // Mirrors renderOverridesBlock (tinycld/scripts/write-workspace-root.ts):
-            // scoped names (leading @) are single-quoted so YAML doesn't read the
-            // '@' as an anchor; plain names are bare.
-            const key = name.startsWith('@') ? `'${name}'` : name
+            // Mirrors isPlainSafeYamlKey/renderOverridesBlock (tinycld/scripts/
+            // write-workspace-root.ts): any key that isn't a plain-safe YAML
+            // scalar — starts with a reserved character, carries one anywhere
+            // in `[\w./@-]`'s complement (e.g. the `>` in
+            // `minimatch@3>brace-expansion`), is a reserved word, or looks like
+            // a bare number — is single-quoted; everything else is bare.
+            const key = isPlainSafeYamlKey(name) ? name : `'${name.replace(/'/g, "''")}'`
             expect(yaml).toContain(`  ${key}: ${version}`)
         }
     })
