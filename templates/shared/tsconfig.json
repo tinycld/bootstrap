@@ -1,7 +1,6 @@
 {
     "extends": "@tinycld/core/tsconfig.package-base.json",
     "compilerOptions": {
-        "baseUrl": ".",
         "paths": {
             "~/tinycld/{{PKG_SLUG}}/*": ["./tinycld/{{PKG_SLUG}}/*"]
         }

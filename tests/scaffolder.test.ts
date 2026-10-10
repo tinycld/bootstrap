@@ -213,6 +213,8 @@ describe('copyTemplate — full preset', () => {
         // Old-layout artifacts are gone.
         expect(ts.compilerOptions.paths['~/*']).toBeUndefined()
         expect(ts.compilerOptions.rootDir).toBeUndefined()
+        // TypeScript 6 deprecates baseUrl; `paths` resolve from the tsconfig's own dir.
+        expect(ts.compilerOptions.baseUrl).toBeUndefined()
     })
 
     it('sibling source files import from @tinycld/core, not ~/', () => {
