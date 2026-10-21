@@ -1,20 +1,18 @@
 import type PocketBase from 'pocketbase'
 
-// Seed function invoked by core/scripts/seed-db.ts for the primary test org.
-// Receives the authenticated `pb` client plus the user/org/user_org context
-// so records can be owned correctly. Return nothing; throw to abort the seed.
+// Seed function invoked by core/scripts/seed-db.ts. Receives the authenticated
+// `pb` client plus the seeded user, so records can be owned by the user id.
+// Return nothing; throw to abort the seed.
 //
 // Example:
 //
 //     await pb.collection('{{PKG_SNAKE}}_items').create({
 //         name: 'Sample',
-//         owner: userOrg.id,
+//         owner: user.id,
 //     })
 
 interface SeedContext {
     user: { id: string; email: string; name: string }
-    org: { id: string }
-    userOrg: { id: string }
 }
 
 export default async function seed(_pb: PocketBase, _ctx: SeedContext): Promise<void> {

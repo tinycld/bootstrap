@@ -250,12 +250,12 @@ Sibling packages should import core utilities via the **scoped** path:
 
 ```ts
 // ✓ right
-import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
+import { useMyLiveQuery } from '@tinycld/core/lib/use-my-live-query'
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { Modal } from '@tinycld/core/ui/modal'
 
 // ✗ wrong (legacy; resolved in earlier core layouts but not the current one)
-import { useOrgLiveQuery } from '~/lib/use-org-live-query'
+import { useMyLiveQuery } from '~/lib/use-my-live-query'
 ```
 
 Within the package, intra-package imports use relative paths:
