@@ -42,6 +42,11 @@ export const usePathname = () => '/'
 export const useSegments = () => []
 export const useLocalSearchParams = () => ({})
 export const useGlobalSearchParams = () => ({})
+export const useUnstableGlobalHref = () => '/'
+export const useNavigationContainerRef = () => ({
+    isReady: () => false,
+    addListener: () => noop,
+})
 export const useFocusEffect = (_cb: () => void) => {}
 export const useNavigation = () => ({})
 export const useRootNavigationState = () => ({ key: 'test' })
