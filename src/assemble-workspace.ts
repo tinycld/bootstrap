@@ -15,6 +15,7 @@ const ALL_FEATURES = [
     'text',
     'google-takeout-import',
     'boards',
+    'books',
 ] as const
 
 // The `tinycld` member is the one always-cloned repo (tinycld/tinycld): it is
