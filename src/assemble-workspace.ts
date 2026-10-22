@@ -3,21 +3,6 @@ import { cpSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// All feature members that exist in the ecosystem. The workspace manifest lists
-// ALL of them (npm tolerates absent dirs), so a partial checkout still installs.
-// But --assemble-only CLONES only app+core+requested — we do NOT force-clone all.
-const ALL_FEATURES = [
-    'contacts',
-    'mail',
-    'calendar',
-    'drive',
-    'calc',
-    'text',
-    'google-takeout-import',
-    'boards',
-    'books',
-] as const
-
 // The `tinycld` member is the one always-cloned repo (tinycld/tinycld): it is
 // the merged app shell + core. assembleWorkspace seeds it directly, pinnable via
 // tinycldRef. Both @tinycld/core (at tinycld/core) and @tinycld/package-scripts
@@ -109,11 +94,40 @@ export interface AssembleWorkspaceOptions {
     clone?: (url: string, dest: string, ref?: string) => boolean
 }
 
-/** Split a member spec `name@ref` into its parts. No `@` → no ref (clone HEAD). */
-function splitRef(spec: string): { name: string; ref?: string } {
-    const at = spec.indexOf('@')
-    if (at === -1) return { name: spec }
-    return { name: spec.slice(0, at), ref: spec.slice(at + 1) || undefined }
+export interface MemberSpec {
+    /** Directory name the member is cloned into. */
+    name: string
+    /** Explicit clone URL; absent for a bare name, which resolves against repoBase. */
+    url?: string
+    ref?: string
+}
+
+const DIR_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const OWNER_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+/**
+ * Parse a `--with` spec: `name`, `owner/repo`, or a full git URL, each with an
+ * optional `@ref` suffix. The `@` that starts a ref is the last one after the
+ * final `/` or `:`, so the `git@` in `git@host:o/r.git` is never mistaken for it.
+ */
+export function parseMemberSpec(spec: string, repoBase: string): MemberSpec {
+    const at = spec.lastIndexOf('@')
+    const hasRef = at > spec.lastIndexOf('/') && at > spec.lastIndexOf(':')
+    const target = hasRef ? spec.slice(0, at) : spec
+    const ref = hasRef ? spec.slice(at + 1) || undefined : undefined
+
+    const isUrl = target.includes('://') || target.startsWith('git@')
+    const isOwnerRepo = !isUrl && OWNER_REPO_RE.test(target)
+    if (!isUrl && !isOwnerRepo) return { name: target, ref }
+
+    const name =
+        target
+            .replace(/\.git$/, '')
+            .split(/[/:]/)
+            .pop() ?? ''
+    if (isUrl) return { name, url: target, ref }
+    const host = repoBase.startsWith('http') ? 'https://github.com/' : 'git@github.com:'
+    return { name, url: `${host}${target}.git`, ref }
 }
 
 function realClone(url: string, dest: string, ref?: string): boolean {
@@ -136,42 +150,42 @@ function realClone(url: string, dest: string, ref?: string): boolean {
  * root-writer script that ships INSIDE the cloned tinycld repo. There is NO
  * workspace meta-repo clone: bootstrap only clones members, never writes
  * vendor version pins or root-file formats itself.
- * Unknown member names throw. Returns the members that ended up present. Does
+ * Invalid member names throw. Returns the members that ended up present. Does
  * NOT run the install (the caller / CI controls that — e.g. `pnpm install` or a
  * frozen-lockfile install for reproducible builds).
  */
 export function assembleWorkspace(opts: AssembleWorkspaceOptions): string[] {
-    // Each requested member may be `name` or `name@ref`. Validate the NAME part.
-    const requested = (opts.members ?? []).map(splitRef)
-    const unknown = requested.filter((m) => !ALL_FEATURES.includes(m.name as (typeof ALL_FEATURES)[number]))
-    if (unknown.length > 0) {
-        throw new Error(
-            `Unknown feature member(s): ${unknown.map((m) => m.name).join(', ')}. Known: ${ALL_FEATURES.join(', ')}`
-        )
-    }
     const repoBase = opts.repoBase ?? 'git@github.com:tinycld'
     const clone = opts.clone ?? realClone
+
+    const requested = (opts.members ?? []).map((spec) => parseMemberSpec(spec, repoBase))
+    const invalid = requested.filter((m) => !DIR_NAME_RE.test(m.name))
+    if (invalid.length > 0) {
+        throw new Error(`Invalid member name(s): ${invalid.map((m) => m.name || '(empty)').join(', ')}`)
+    }
 
     // Build the clone set keyed by member NAME so a member passed both bare and
     // with an @ref dedupes to one clone (the ref-bearing entry wins). The
     // `tinycld` repo (merged app shell + core, with core + package-scripts
     // nested) is always cloned and pinnable via tinycldRef.
-    const refByName = new Map<string, string | undefined>()
-    refByName.set('tinycld', opts.tinycldRef)
-    for (const { name, ref } of requested) {
+    const byName = new Map<string, { url?: string; ref?: string }>()
+    byName.set('tinycld', { ref: opts.tinycldRef })
+    for (const { name, url, ref } of requested) {
         // A later ref overrides an earlier bare entry; a bare entry never clears
         // an existing ref.
-        if (ref !== undefined || !refByName.has(name)) refByName.set(name, ref)
+        const prior = byName.get(name)
+        if (!prior) byName.set(name, { url, ref })
+        else if (ref !== undefined) byName.set(name, { url: url ?? prior.url, ref })
     }
 
     const present: string[] = []
-    for (const [name, ref] of refByName) {
+    for (const [name, { url, ref }] of byName) {
         const dest = join(opts.root, name)
         if (existsSync(join(dest, '.git')) || existsSync(join(dest, 'package.json'))) {
             present.push(name)
             continue
         }
-        if (clone(`${repoBase}/${name}.git`, dest, ref)) present.push(name)
+        if (clone(url ?? `${repoBase}/${name}.git`, dest, ref)) present.push(name)
     }
 
     // Root scaffolding AFTER cloning: the static template files bootstrap
