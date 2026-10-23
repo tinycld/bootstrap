@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { intro, outro } from '@clack/prompts'
 import pc from 'picocolors'
 import { ArgParseError, parseArgs } from './args.ts'
-import { type AssembleWorkspaceOptions, assembleWorkspace } from './assemble-workspace.ts'
+import { type AssembleWorkspaceOptions, assembleWorkspace, parseMemberSpec } from './assemble-workspace.ts'
 import { copyTemplate, resolveTemplatesRoot } from './copy-template.ts'
 import { detectLayout } from './layout.ts'
 import { offerLinkPackage } from './link-package.ts'
@@ -21,10 +21,8 @@ export function runAssembleOnly(opts: AssembleWorkspaceOptions): void {
     let tinycldRef = opts.tinycldRef
     const features: string[] = []
     for (const spec of opts.members ?? []) {
-        const at = spec.indexOf('@')
-        const name = at === -1 ? spec : spec.slice(0, at)
-        const ref = at === -1 ? undefined : spec.slice(at + 1) || undefined
-        if (name === 'tinycld') tinycldRef = tinycldRef ?? ref
+        const { name, url, ref } = parseMemberSpec(spec, opts.repoBase ?? process.env.TINYCLD_REPO_BASE ?? '')
+        if (name === 'tinycld' && !url) tinycldRef = tinycldRef ?? ref
         else features.push(spec)
     }
     // Honor TINYCLD_REPO_BASE (CI sets it to an HTTPS base since runners have no
