@@ -27,6 +27,8 @@ The CLI writes a small set of workspace files from embedded templates (`tinycld.
 
 Bootstrap carries no vendor version pins and owns none of the root coordination-file formats. Immediately after cloning, it runs `scripts/write-workspace-root.ts` **from inside the freshly cloned `tinycld` repo** to write `package.json`, `pnpm-workspace.yaml` (incl. the pnpm `overrides:` block), a root `package-versions.json` copy, `biome.json`, `.watchmanconfig`, and `.npmrc` — all derived from `tinycld/core/package-versions.json`, the pins' source of truth. This means `--assemble-only` requires a tinycld ref that contains `scripts/write-workspace-root.ts` (the first tinycld release after 2026-08); an older ref fails assembly with a clear error naming the missing script, rather than silently producing a workspace with stale or missing root files.
 
+`--with` also takes `owner/repo` (cloned from GitHub) or a full git URL, so third-party packages work; the member dir is named after the repo. Append `@ref` to any form.
+
 `--with name@ref` pins a clone to a tag, branch, or commit:
 
 ```sh
@@ -250,12 +252,12 @@ Sibling packages should import core utilities via the **scoped** path:
 
 ```ts
 // ✓ right
-import { useOrgLiveQuery } from '@tinycld/core/lib/use-org-live-query'
+import { useMyLiveQuery } from '@tinycld/core/lib/use-my-live-query'
 import { useThemeColor } from '@tinycld/core/lib/use-app-theme'
 import { Modal } from '@tinycld/core/ui/modal'
 
 // ✗ wrong (legacy; resolved in earlier core layouts but not the current one)
-import { useOrgLiveQuery } from '~/lib/use-org-live-query'
+import { useMyLiveQuery } from '~/lib/use-my-live-query'
 ```
 
 Within the package, intra-package imports use relative paths:

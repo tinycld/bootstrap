@@ -97,16 +97,29 @@ describe('assembleWorkspace (clone scope)', () => {
         expect(memberNames).toEqual(['tinycld', 'mail'])
     })
 
-    it('throws on an unknown feature member', () => {
+    it('throws on a member name that is not a safe directory name', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        expect(() => assembleWorkspace({ root: dir, members: ['nope'], clone: () => true })).toThrow(/Unknown feature/)
+        expect(() => assembleWorkspace({ root: dir, members: ['..'], clone: () => true })).toThrow(/Invalid member/)
     })
 
-    it('still validates the NAME part when a member carries an @ref', () => {
+    it('clones owner/repo from github and names the member after the repo', () => {
         dir = mkdtempSync(join(tmpdir(), 'ws-'))
-        expect(() => assembleWorkspace({ root: dir, members: ['nope@v1.0.0'], clone: () => true })).toThrow(
-            /Unknown feature/
-        )
+        const urls: string[] = []
+        const present = assembleWorkspace({ root: dir, members: ['acme/widgets@v2'], clone: makeCloneStub(urls) })
+        expect(urls).toContain('git@github.com:acme/widgets.git')
+        expect(present).toContain('widgets')
+    })
+
+    it('clones a full git URL as given', () => {
+        dir = mkdtempSync(join(tmpdir(), 'ws-'))
+        const urls: string[] = []
+        assembleWorkspace({
+            root: dir,
+            members: ['https://example.com/team/thing.git', 'git@example.com:team/other.git@v1'],
+            clone: makeCloneStub(urls),
+        })
+        expect(urls).toContain('https://example.com/team/thing.git')
+        expect(urls).toContain('git@example.com:team/other.git')
     })
 
     // The tinycld-anchored CI/release flow checks out the merged repo into
