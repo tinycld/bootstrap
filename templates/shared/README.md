@@ -39,7 +39,7 @@ app shell's biome config, tsconfig base, and vitest/playwright configs (so
 
 ```sh
 cd {{PKG_SLUG}}
-pnpm exec tinycld-pkg check       # biome + typecheck
+pnpm exec tinycld-pkg check       # biome + typecheck + vitest (+ playwright --list with e2e specs)
 pnpm exec tinycld-pkg test        # vitest unit tests
 pnpm exec tinycld-pkg test:e2e    # playwright e2e specs (full preset only — packages with screens)
 ```
