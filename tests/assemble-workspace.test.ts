@@ -2,7 +2,31 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { assembleWorkspace, copyWorkspaceTemplate } from '../src/assemble-workspace.ts'
+import { assembleWorkspace, copyWorkspaceTemplate, parseMemberSpec } from '../src/assemble-workspace.ts'
+
+describe('parseMemberSpec', () => {
+    const base = 'https://github.com/tinycld'
+
+    it.each([
+        ['mail', { name: 'mail', ref: undefined }],
+        ['contacts@v1.2.3', { name: 'contacts', ref: 'v1.2.3' }],
+        ['tinycld@books/p8-cli-transactions', { name: 'tinycld', ref: 'books/p8-cli-transactions' }],
+        ['tinycld@feat/a:b', { name: 'tinycld', ref: 'feat/a:b' }],
+        ['acme/widgets@feat/x', { name: 'widgets', url: 'https://github.com/acme/widgets.git', ref: 'feat/x' }],
+        ['git@github.com:o/r.git@a/b', { name: 'r', url: 'git@github.com:o/r.git', ref: 'a/b' }],
+        ['git@example.com:team/other.git', { name: 'other', url: 'git@example.com:team/other.git', ref: undefined }],
+        [
+            'https://u@example.com/team/thing.git@rel/1',
+            { name: 'thing', url: 'https://u@example.com/team/thing.git', ref: 'rel/1' },
+        ],
+        [
+            'https://u@example.com/team/thing.git',
+            { name: 'thing', url: 'https://u@example.com/team/thing.git', ref: undefined },
+        ],
+    ])('parses %s', (spec, expected) => {
+        expect(parseMemberSpec(spec, base)).toEqual(expected)
+    })
+})
 
 let dir: string
 afterEach(() => {
