@@ -105,14 +105,23 @@ export interface MemberSpec {
 const DIR_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const OWNER_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/
 
+function repoPathStart(spec: string): number {
+    if (spec.startsWith('git@')) return 'git@'.length
+    const scheme = spec.indexOf('://')
+    if (scheme < 0) return 0
+    const path = spec.indexOf('/', scheme + '://'.length)
+    return path < 0 ? spec.length : path
+}
+
 /**
  * Parse a `--with` spec: `name`, `owner/repo`, or a full git URL, each with an
- * optional `@ref` suffix. The `@` that starts a ref is the last one after the
- * final `/` or `:`, so the `git@` in `git@host:o/r.git` is never mistaken for it.
+ * optional `@ref` suffix. The ref is everything after the first `@` of the
+ * repo path, so a branch ref may hold `/` (`tinycld@books/p8-x`), while the
+ * `git@` of `git@host:o/r.git` and the user of `https://u@host/…` are skipped.
  */
 export function parseMemberSpec(spec: string, repoBase: string): MemberSpec {
-    const at = spec.lastIndexOf('@')
-    const hasRef = at > spec.lastIndexOf('/') && at > spec.lastIndexOf(':')
+    const at = spec.indexOf('@', repoPathStart(spec))
+    const hasRef = at >= 0
     const target = hasRef ? spec.slice(0, at) : spec
     const ref = hasRef ? spec.slice(at + 1) || undefined : undefined
 
